@@ -503,7 +503,7 @@ During the `ci` monitor phase, `bin/fm-crew-state.sh` also reads the ci step log
 For PR-based ship tasks, the ready signal depends on mode: `no-mistakes` reports `done: PR <url> checks green` after CI is green, while `direct-PR` reports `done: PR <url>` after opening the PR.
 Run `bin/fm-pr-check.sh <id> <PR url>` - it records `pr=` and GitHub's `pr_head=` when available in the task's meta and arms the watcher's merge poll.
 Tell the captain: the PR's full URL (always the complete `https://...` link, never a bare `#number` - the captain's terminal makes a full URL clickable), a one-paragraph summary, and, for `no-mistakes`, the risk level it emitted.
-(The check contract, for any custom `state/<id>.check.sh` you write yourself: print one line only when firstmate should wake, print nothing otherwise, finish before `FM_CHECK_TIMEOUT`, then bind its current bytes with `bin/fm-check-register.sh <id>` before the watcher may execute it.)
+(The check contract, for any custom `state/<id>.check.sh` you write yourself: keep it an ordinary single-link mode-`0700` file, print one line only when firstmate should wake, print nothing otherwise, finish before `FM_CHECK_TIMEOUT`, then bind its current bytes with `bin/fm-check-register.sh <id>` before the watcher may execute it.)
 
 If the captain says "merge it", run `bin/fm-pr-merge.sh <id> <full GitHub PR URL>` yourself; that instruction is the explicit approval.
 If `yolo=on`, merge a green/approved PR yourself the same way and post the required FYI.
