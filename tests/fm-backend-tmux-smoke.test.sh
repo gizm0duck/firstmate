@@ -46,7 +46,7 @@ TARGET="$SESSION:$WINDOW"
 
 # --- create session ----------------------------------------------------------
 
-tmux new-session -d -s "$SESSION" -x 200 -y 50 \
+SHELL=/bin/sh tmux new-session -d -s "$SESSION" -x 200 -y 50 \
   || fail "real tmux: new-session failed"
 fm_backend_tmux_create_task "$SESSION" "$WINDOW" "$HOME" \
   || fail "fm_backend_tmux_create_task failed to create the task window"
