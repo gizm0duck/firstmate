@@ -2,11 +2,8 @@
 # Shared tasks-axi backend selection and compatibility probe for bootstrap,
 # teardown, and secondmate backlog handoff.
 # Usage: . bin/fm-tasks-axi-lib.sh
-# Compatible means tasks-axi --version reports 0.2.2 or newer,
-# `tasks-axi show --help` exposes --full for lossless reads, `tasks-axi update
-# --help` exposes --body-file for lossless full-body replacement plus
-# --archive-body for recoverable rewrites, and `tasks-axi mv --help` exposes
-# [<id>...] for atomic multi-ID moves required by secondmate handoffs.
+# docs/configuration.md "Backlog backend" owns the compatibility definition;
+# this library implements its shared version-and-feature probe.
 # `config/backlog-backend=manual` opts out of tasks-axi for routine firstmate
 # backlog mutations, but validated secondmate handoffs always use `tasks-axi mv`.
 # Absent or any other value keeps the default tasks-axi backend path, falling

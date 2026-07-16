@@ -36,8 +36,8 @@
 # Item bodies must use at least two leading spaces. The helper refuses a selected
 # item with a single-space or tab-indented continuation rather than risk leaving
 # it orphaned, because tasks-axi treats only two-or-more-space lines as body.
-# The move needs compatible `tasks-axi` on PATH, including atomic multi-ID `mv`
-# (introduced in 0.2.2). Bootstrap requires it fleet-wide, so this works
+# The move needs compatible `tasks-axi` on PATH; docs/configuration.md "Backlog
+# backend" owns that definition. Bootstrap requires it fleet-wide, so this works
 # everywhere; the `config/backlog-backend=manual` knob only governs firstmate's
 # own hand-editing of its own backlog, not this validated helper. Idempotent:
 # re-running converges. Atomic: on any move failure nothing moves.
