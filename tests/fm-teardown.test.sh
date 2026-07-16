@@ -133,7 +133,12 @@ add_compatible_tasks_axi() {
   cat > "$case_dir/fakebin/tasks-axi" <<'SH'
 #!/usr/bin/env bash
 if [ "${1:-}" = --version ]; then
-  printf '%s\n' '0.1.1'
+  printf '%s\n' '0.2.2'
+  exit 0
+fi
+if [ "${1:-}" = show ] && [ "${2:-}" = --help ]; then
+  printf '%s\n' 'usage: tasks-axi show <id> [flags]'
+  printf '%s\n' '  --full'
   exit 0
 fi
 if [ "${1:-}" = update ] && [ "${2:-}" = --help ]; then
