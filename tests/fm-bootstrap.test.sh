@@ -7,8 +7,8 @@
 # 'TASKS_AXI: available' lines, so those contracts are pinned verbatim. The cases
 # are table-driven over the inputs that vary: whether `treehouse get --help`
 # advertises --lease, which (if any) tasks-axi version is on PATH, whether
-# tasks-axi update advertises --archive-body, whether its mv help advertises
-# multi-ID moves, whether quota-axi is on PATH,
+# tasks-axi update advertises lossless --body-file replacement and --archive-body,
+# whether its mv help advertises multi-ID moves, whether quota-axi is on PATH,
 # whether the local backend config opts out of tasks-axi backlog mutations, and
 # which no-mistakes version is on PATH.
 # Dedicated fleet-sync cases pin the computed bootstrap timeout, explicit
@@ -68,7 +68,7 @@ fi
 exit 0
 SH
   chmod +x "$fakebin/no-mistakes"
-  add_tasks_axi "$fakebin" "0.1.1"
+  add_tasks_axi "$fakebin" "0.2.2"
   add_quota_axi "$fakebin"
   printf '%s\n' "$fakebin"
 }
@@ -83,9 +83,12 @@ SH
 }
 
 add_tasks_axi() {
-  local fakebin=$1 version=$2 archive_body=${3:-yes} multi_id=${4:-yes} archive_line mv_usage
+  local fakebin=$1 version=$2 archive_body=${3:-yes} multi_id=${4:-yes} body_file=${5:-yes}
+  local archive_line body_file_line mv_usage
   archive_line=""
+  body_file_line=""
   [ "$archive_body" = yes ] && archive_line='  --archive-body'
+  [ "$body_file" = yes ] && body_file_line='  --body-file <path>'
   mv_usage='usage: tasks-axi mv <id> [<id>...] --to <path-or-dir>'
   [ "$multi_id" = yes ] || mv_usage='usage: tasks-axi mv <id> --to <path-or-dir>'
   cat > "$fakebin/tasks-axi" <<SH
@@ -96,7 +99,7 @@ if [ "\${1:-}" = --version ]; then
 fi
 if [ "\${1:-}" = update ] && [ "\${2:-}" = --help ]; then
   printf '%s\n' 'usage: tasks-axi update <id> [flags]'
-  printf '%s\n' '  --body-file <path>'
+  [ -z '$body_file_line' ] || printf '%s\n' '$body_file_line'
   [ -z '$archive_line' ] || printf '%s\n' '$archive_line'
   exit 0
 fi
@@ -224,7 +227,8 @@ assert_timeout_report() {
 #   mode=exact -> output must equal <expect>
 #   mode=grep  -> output must contain <expect> (fixed string); <notcontains> must not appear
 test_bootstrap_reporting() {
-  local label lease tasks quota backend mode expect notcontains case_dir fakebin out n archive_body multi_id
+  local label lease tasks quota backend mode expect notcontains case_dir fakebin out n
+  local archive_body body_file multi_id
   n=0
   while IFS='^' read -r label lease tasks quota backend mode expect notcontains; do
     [ -n "$label" ] || continue
@@ -240,6 +244,7 @@ test_bootstrap_reporting() {
       rm -f "$fakebin/tasks-axi"
     else
       archive_body=yes
+      body_file=yes
       multi_id=yes
       case "$tasks" in
         *:noarchive)
@@ -248,12 +253,18 @@ test_bootstrap_reporting() {
           ;;
       esac
       case "$tasks" in
+        *:nobodyfile)
+          body_file=no
+          tasks=${tasks%:nobodyfile}
+          ;;
+      esac
+      case "$tasks" in
         *:nomulti)
           multi_id=no
           tasks=${tasks%:nomulti}
           ;;
       esac
-      add_tasks_axi "$fakebin" "$tasks" "$archive_body" "$multi_id"
+      add_tasks_axi "$fakebin" "$tasks" "$archive_body" "$multi_id" "$body_file"
     fi
     if [ "$quota" = "0" ]; then
       rm -f "$fakebin/quota-axi"
@@ -276,16 +287,17 @@ test_bootstrap_reporting() {
         ;;
     esac
   done <<'ROWS'
-treehouse --lease support is accepted silently^1^0.1.1^1^manual^empty^^
-treehouse without --lease reports an upgrade, gh auth is fine^0^0.1.1^1^-^grep^MISSING: treehouse (install: curl -fsSL https://kunchenguid.github.io/treehouse/install.sh | sh)^NEEDS_GH_AUTH
-compatible tasks-axi is reported available by default^1^0.1.1^1^-^exact^TASKS_AXI: available^
+treehouse --lease support is accepted silently^1^0.2.2^1^manual^empty^^
+treehouse without --lease reports an upgrade, gh auth is fine^0^0.2.2^1^-^grep^MISSING: treehouse (install: curl -fsSL https://kunchenguid.github.io/treehouse/install.sh | sh)^NEEDS_GH_AUTH
+compatible tasks-axi is reported available by default^1^0.2.2^1^-^exact^TASKS_AXI: available^
 missing tasks-axi is required by default^1^-^1^-^exact^MISSING: tasks-axi (install: npm install -g tasks-axi)^
-incompatible tasks-axi is required by default^1^0.1.0^1^-^exact^MISSING: tasks-axi (install: npm install -g tasks-axi)^
-tasks-axi without archive-body is required by default^1^0.1.2:noarchive^1^-^exact^MISSING: tasks-axi (install: npm install -g tasks-axi)^
+incompatible tasks-axi is required by default^1^0.2.1^1^-^exact^MISSING: tasks-axi (install: npm install -g tasks-axi)^
+tasks-axi without archive-body is required by default^1^0.2.2:noarchive^1^-^exact^MISSING: tasks-axi (install: npm install -g tasks-axi)^
+tasks-axi without body-file replacement is required by default^1^0.2.2:nobodyfile^1^-^exact^MISSING: tasks-axi (install: npm install -g tasks-axi)^
 tasks-axi without multi-id mv is required by default^1^0.2.2:nomulti^1^-^exact^MISSING: tasks-axi (install: npm install -g tasks-axi)^
-missing quota-axi is required by default^1^0.1.1^0^manual^exact^MISSING: quota-axi (install: npm install -g quota-axi)^
+missing quota-axi is required by default^1^0.2.2^0^manual^exact^MISSING: quota-axi (install: npm install -g quota-axi)^
 manual backlog backend still requires missing tasks-axi^1^-^1^manual^exact^MISSING: tasks-axi (install: npm install -g tasks-axi)^
-manual backlog backend suppresses tasks-axi availability^1^0.1.1^1^manual^empty^^
+manual backlog backend suppresses tasks-axi availability^1^0.2.2^1^manual^empty^^
 ROWS
   pass "bootstrap reports treehouse lease + tasks-axi/quota-axi bootstrap contracts"
 }
@@ -302,7 +314,7 @@ test_no_mistakes_min_version() {
     mkdir -p "$case_dir/home/config"
     printf '%s\n' manual > "$case_dir/home/config/backlog-backend"
     fakebin=$(make_fake_toolchain "$case_dir")
-    add_tasks_axi "$fakebin" "0.1.1"
+    add_tasks_axi "$fakebin" "0.2.2"
     out=$(PATH="$fakebin:$BASE_PATH" FM_HOME="$case_dir/home" FM_ROOT_OVERRIDE="$case_dir/home" \
       FM_FAKE_TREEHOUSE_LEASE_HELP=1 FM_FAKE_NO_MISTAKES_VERSION="$version" "$ROOT/bin/fm-bootstrap.sh")
     case "$mode" in

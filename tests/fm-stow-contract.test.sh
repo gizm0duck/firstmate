@@ -12,6 +12,7 @@ test_stow_skill_task_note_contract() {
   assert_grep 'tasks-axi update <id> --body-file <path>' "$stow" "stow skill does not require task body replacement"
   assert_grep '--archive-body' "$stow" "stow skill does not document recoverable task body archival"
   assert_grep 'Never append.' "$stow" "stow skill does not forbid append-first task notes"
+  assert_no_grep 'tasks-axi update <id> --append' "$stow" "stow skill still documents the removed tasks-axi append flag"
   assert_no_grep 'carry that context into the replacement body' "$stow" "stow skill still preserves archive-only context in the replacement body"
   pass "stow skill task-note contract includes recoverable body archival"
 }

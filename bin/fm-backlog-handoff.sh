@@ -296,7 +296,7 @@ if [ "$FAILED" -ne 0 ]; then
 fi
 
 if ! fm_tasks_axi_compatible; then
-  echo "error: tasks-axi with atomic multi-ID mv support (0.2.2+) is required to move backlog items" >&2
+  echo "error: tasks-axi 0.2.2+ with lossless body replacement and atomic multi-ID mv is required to move backlog items" >&2
   exit 1
 fi
 

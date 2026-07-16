@@ -2,10 +2,10 @@
 # Shared tasks-axi backend selection and compatibility probe for bootstrap,
 # teardown, and secondmate backlog handoff.
 # Usage: . bin/fm-tasks-axi-lib.sh
-# Compatible means tasks-axi --version reports 0.1.1 or newer,
-# `tasks-axi update --help` exposes --archive-body for recoverable note rewrites,
-# and `tasks-axi mv --help` exposes [<id>...] for atomic multi-ID moves required
-# by secondmate handoffs (introduced in tasks-axi 0.2.2).
+# Compatible means tasks-axi --version reports 0.2.2 or newer,
+# `tasks-axi update --help` exposes --body-file for lossless full-body replacement
+# plus --archive-body for recoverable rewrites, and `tasks-axi mv --help` exposes
+# [<id>...] for atomic multi-ID moves required by secondmate handoffs.
 # `config/backlog-backend=manual` opts out of tasks-axi for routine firstmate
 # backlog mutations, but validated secondmate handoffs always use `tasks-axi mv`.
 # Absent or any other value keeps the default tasks-axi backend path, falling
@@ -30,19 +30,20 @@ fm_tasks_axi_compatible() {
   patch=${rest##* }
 
   if [ "$major" -gt 0 ] ||
-    { [ "$major" -eq 0 ] && [ "$minor" -gt 1 ]; } ||
-    { [ "$major" -eq 0 ] && [ "$minor" -eq 1 ] && [ "$patch" -ge 1 ]; }; then
-    fm_tasks_axi_update_has_archive_body && fm_tasks_axi_mv_has_multi_id
+    { [ "$major" -eq 0 ] && [ "$minor" -gt 2 ]; } ||
+    { [ "$major" -eq 0 ] && [ "$minor" -eq 2 ] && [ "$patch" -ge 2 ]; }; then
+    fm_tasks_axi_update_has_lossless_body && fm_tasks_axi_mv_has_multi_id
     return $?
   fi
   return 1
 }
 
-fm_tasks_axi_update_has_archive_body() {
+fm_tasks_axi_update_has_lossless_body() {
   local output
   command -v tasks-axi >/dev/null 2>&1 || return 1
   output=$(tasks-axi update --help 2>&1) || return 1
-  printf '%s\n' "$output" | grep -F -- '--archive-body' >/dev/null
+  printf '%s\n' "$output" | grep -F -- '--body-file' >/dev/null &&
+    printf '%s\n' "$output" | grep -F -- '--archive-body' >/dev/null
 }
 
 fm_tasks_axi_mv_has_multi_id() {

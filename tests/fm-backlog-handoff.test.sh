@@ -55,6 +55,12 @@ assert_block_equals() {
   fi
 }
 
+task_detail() {
+  local file=$1 key=$2
+  tasks-axi show "$key" --full --file "$file" |
+    awk '/^help\[[0-9]+\]:/ { exit } { print }'
+}
+
 test_body_moves_when_followed_by_another_item() {
   local home="$TMP_ROOT/body-next-item-main"
   local sub="$TMP_ROOT/body-next-item-sub"
@@ -472,6 +478,99 @@ EOF
   pass "multi-paragraph body with internal blank lines moves whole and is idempotent"
 }
 
+test_structured_task_round_trip_preserves_fields_and_neighbors() {
+  local home="$TMP_ROOT/structured-roundtrip-main"
+  local sub="$TMP_ROOT/structured-roundtrip-sub"
+  local source target body_file
+  setup_homes "$home" "$sub"
+  source="$home/data/backlog.md"
+  target="$sub/data/backlog.md"
+  body_file="$TMP_ROOT/structured-roundtrip-body.md"
+
+  cat > "$source" <<'EOF'
+## In flight
+
+## Queued
+- [ ] before-guard - Before neighbor https://example.test/before (repo: before-repo) (kind: docs) (since 2026-07-15)
+  before body only
+- [ ] blocker-anchor - Dependency anchor (repo: dependency-repo) (kind: ship) (since 2026-07-15)
+  blocker body only
+- [ ] structured-roundtrip - Adversarial target https://example.test/spec https://github.com/acme/alpha/pull/42 (repo: alpha) (kind: scout) (priority: 3) (since 2026-07-15) (hold: captain says wait) (hold-kind: captain) (hold-until: 2099-12-31) blocked-by: blocker-anchor - waits for the anchor
+  stale body that full replacement must remove
+- [ ] after-guard - After neighbor https://example.test/after (repo: after-repo) (kind: ship) (since 2026-07-15)
+  after body only
+
+## Done
+EOF
+  cat > "$body_file" <<'EOF'
+First paragraph.
+
+## Intent
+Preserve structured-looking body text: (repo: body-only) (kind: body-kind).
+
+- blocked-by: body-only - this is body, not a dependency
+EOF
+
+  tasks-axi update structured-roundtrip --file "$source" --body-file "$body_file" >/dev/null \
+    || fail "lossless full-body replacement setup failed"
+
+  local target_before blocker_before before_neighbor_before after_neighbor_before
+  target_before=$(task_detail "$source" structured-roundtrip)
+  blocker_before=$(task_detail "$source" blocker-anchor)
+  before_neighbor_before=$(task_detail "$source" before-guard)
+  after_neighbor_before=$(task_detail "$source" after-guard)
+
+  FM_HOME="$home" "$ROOT/bin/fm-backlog-handoff.sh" \
+    design blocker-anchor structured-roundtrip >/dev/null \
+    || fail "structured blocker/dependent handoff failed"
+
+  local target_destination blocker_destination
+  target_destination=$(task_detail "$target" structured-roundtrip)
+  blocker_destination=$(task_detail "$target" blocker-anchor)
+  assert_block_equals "structured target fields changed during handoff" \
+    "$target_before" "$target_destination"
+  assert_block_equals "structured blocker fields changed during handoff" \
+    "$blocker_before" "$blocker_destination"
+  assert_contains "$target_destination" 'repo: alpha' "handoff lost target repo"
+  assert_contains "$target_destination" 'kind: scout' "handoff lost target kind"
+  assert_contains "$target_destination" 'blocked_by: blocker-anchor' "handoff lost target dependency"
+  assert_contains "$target_destination" 'held: yes' "handoff lost target hold state"
+  assert_contains "$target_destination" 'hold_kind: captain' "handoff lost target hold kind"
+  assert_contains "$target_destination" 'hold_until: 2099-12-31' "handoff lost target hold date"
+  assert_contains "$target_destination" 'pr:https://github.com/acme/alpha/pull/42' "handoff lost target PR link"
+  assert_contains "$target_destination" 'doc:https://example.test/spec' "handoff lost target documentation link"
+  assert_contains "$target_destination" 'Preserve structured-looking body text' "handoff lost replacement body"
+  assert_grep 'blocked-by: blocker-anchor - waits for the anchor' "$target" \
+    "handoff lost dependency reason"
+
+  assert_block_equals "preceding neighbor changed when target moved out" \
+    "$before_neighbor_before" "$(task_detail "$source" before-guard)"
+  assert_block_equals "following neighbor absorbed target fields or body" \
+    "$after_neighbor_before" "$(task_detail "$source" after-guard)"
+  assert_no_grep 'body-only' "$source" "target body accumulated into an adjacent source task"
+  assert_no_grep 'stale body' "$source" "superseded body survived full replacement"
+
+  tasks-axi mv blocker-anchor structured-roundtrip --file "$target" --to "$source" >/dev/null \
+    || fail "structured blocker/dependent move-back failed"
+
+  assert_block_equals "structured target fields changed after move-back" \
+    "$target_before" "$(task_detail "$source" structured-roundtrip)"
+  assert_block_equals "structured blocker fields changed after move-back" \
+    "$blocker_before" "$(task_detail "$source" blocker-anchor)"
+  assert_block_equals "preceding neighbor changed after round trip" \
+    "$before_neighbor_before" "$(task_detail "$source" before-guard)"
+  assert_block_equals "following neighbor changed after round trip" \
+    "$after_neighbor_before" "$(task_detail "$source" after-guard)"
+
+  local count
+  count=$(grep -cF -- 'Preserve structured-looking body text' "$source")
+  [ "$count" -eq 1 ] || fail "round trip duplicated or lost the target body (count=$count)"
+  count=$(grep -cF -- 'blocked-by: blocker-anchor - waits for the anchor' "$source")
+  [ "$count" -eq 1 ] || fail "round trip duplicated or lost the dependency reason (count=$count)"
+
+  pass "structured task round trip preserves body, fields, links, hold, dependencies, and neighbors"
+}
+
 test_body_moves_when_followed_by_another_item
 test_body_moves_when_followed_by_section_heading
 test_multi_paragraph_body_with_internal_blanks_moves_whole
@@ -481,5 +580,6 @@ test_untouched_eof_line_preserves_terminator
 test_body_handoff_is_idempotent
 test_noncanonical_indented_continuations_refuse_without_changes
 test_indented_heading_is_not_section_boundary
+test_structured_task_round_trip_preserves_fields_and_neighbors
 
 echo "ALL TESTS PASSED"
