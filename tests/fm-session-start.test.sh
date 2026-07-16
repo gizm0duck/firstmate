@@ -92,9 +92,15 @@ case "${1:-}" in
     printf '%s\n' '0.2.3'
     exit 0
     ;;
+  show)
+    if [ "${2:-}" = --help ]; then
+      printf '%s\n' 'usage: tasks-axi show <id> [--full]'
+      exit 0
+    fi
+    ;;
   update)
     if [ "${2:-}" = --help ]; then
-      printf '%s\n' 'usage: tasks-axi update <id> [--archive-body]'
+      printf '%s\n' 'usage: tasks-axi update <id> [--body-file <path>] [--archive-body]'
       exit 0
     fi
     ;;
