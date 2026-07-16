@@ -3,8 +3,9 @@
 # teardown, and secondmate backlog handoff.
 # Usage: . bin/fm-tasks-axi-lib.sh
 # Compatible means tasks-axi --version reports 0.2.2 or newer,
-# `tasks-axi update --help` exposes --body-file for lossless full-body replacement
-# plus --archive-body for recoverable rewrites, and `tasks-axi mv --help` exposes
+# `tasks-axi show --help` exposes --full for lossless reads, `tasks-axi update
+# --help` exposes --body-file for lossless full-body replacement plus
+# --archive-body for recoverable rewrites, and `tasks-axi mv --help` exposes
 # [<id>...] for atomic multi-ID moves required by secondmate handoffs.
 # `config/backlog-backend=manual` opts out of tasks-axi for routine firstmate
 # backlog mutations, but validated secondmate handoffs always use `tasks-axi mv`.
@@ -32,10 +33,19 @@ fm_tasks_axi_compatible() {
   if [ "$major" -gt 0 ] ||
     { [ "$major" -eq 0 ] && [ "$minor" -gt 2 ]; } ||
     { [ "$major" -eq 0 ] && [ "$minor" -eq 2 ] && [ "$patch" -ge 2 ]; }; then
-    fm_tasks_axi_update_has_lossless_body && fm_tasks_axi_mv_has_multi_id
+    fm_tasks_axi_show_has_full &&
+      fm_tasks_axi_update_has_lossless_body &&
+      fm_tasks_axi_mv_has_multi_id
     return $?
   fi
   return 1
+}
+
+fm_tasks_axi_show_has_full() {
+  local output
+  command -v tasks-axi >/dev/null 2>&1 || return 1
+  output=$(tasks-axi show --help 2>&1) || return 1
+  printf '%s\n' "$output" | grep -F -- '--full' >/dev/null
 }
 
 fm_tasks_axi_update_has_lossless_body() {

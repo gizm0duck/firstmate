@@ -7,10 +7,10 @@
 # 'TASKS_AXI: available' lines, so those contracts are pinned verbatim. The cases
 # are table-driven over the inputs that vary: whether `treehouse get --help`
 # advertises --lease, which (if any) tasks-axi version is on PATH, whether
-# tasks-axi update advertises lossless --body-file replacement and --archive-body,
-# whether its mv help advertises multi-ID moves, whether quota-axi is on PATH,
-# whether the local backend config opts out of tasks-axi backlog mutations, and
-# which no-mistakes version is on PATH.
+# tasks-axi show advertises lossless --full reads, whether update advertises
+# lossless --body-file replacement and --archive-body, whether mv advertises
+# multi-ID moves, whether quota-axi is on PATH, whether the local backend config
+# opts out of tasks-axi backlog mutations, and which no-mistakes version is on PATH.
 # Dedicated fleet-sync cases pin the computed bootstrap timeout, explicit
 # override, blank-env defaulting, partial-output relay, and pre-launch timeout
 # scan.
@@ -84,17 +84,24 @@ SH
 
 add_tasks_axi() {
   local fakebin=$1 version=$2 archive_body=${3:-yes} multi_id=${4:-yes} body_file=${5:-yes}
-  local archive_line body_file_line mv_usage
+  local show_full=${6:-yes} archive_line body_file_line full_line mv_usage
   archive_line=""
   body_file_line=""
+  full_line=""
   [ "$archive_body" = yes ] && archive_line='  --archive-body'
   [ "$body_file" = yes ] && body_file_line='  --body-file <path>'
+  [ "$show_full" = yes ] && full_line='  --full'
   mv_usage='usage: tasks-axi mv <id> [<id>...] --to <path-or-dir>'
   [ "$multi_id" = yes ] || mv_usage='usage: tasks-axi mv <id> --to <path-or-dir>'
   cat > "$fakebin/tasks-axi" <<SH
 #!/usr/bin/env bash
 if [ "\${1:-}" = --version ]; then
   printf '%s\n' '$version'
+  exit 0
+fi
+if [ "\${1:-}" = show ] && [ "\${2:-}" = --help ]; then
+  printf '%s\n' 'usage: tasks-axi show <id> [flags]'
+  [ -z '$full_line' ] || printf '%s\n' '$full_line'
   exit 0
 fi
 if [ "\${1:-}" = update ] && [ "\${2:-}" = --help ]; then
@@ -228,7 +235,7 @@ assert_timeout_report() {
 #   mode=grep  -> output must contain <expect> (fixed string); <notcontains> must not appear
 test_bootstrap_reporting() {
   local label lease tasks quota backend mode expect notcontains case_dir fakebin out n
-  local archive_body body_file multi_id
+  local archive_body body_file multi_id show_full
   n=0
   while IFS='^' read -r label lease tasks quota backend mode expect notcontains; do
     [ -n "$label" ] || continue
@@ -246,6 +253,7 @@ test_bootstrap_reporting() {
       archive_body=yes
       body_file=yes
       multi_id=yes
+      show_full=yes
       case "$tasks" in
         *:noarchive)
           archive_body=no
@@ -259,12 +267,18 @@ test_bootstrap_reporting() {
           ;;
       esac
       case "$tasks" in
+        *:nofull)
+          show_full=no
+          tasks=${tasks%:nofull}
+          ;;
+      esac
+      case "$tasks" in
         *:nomulti)
           multi_id=no
           tasks=${tasks%:nomulti}
           ;;
       esac
-      add_tasks_axi "$fakebin" "$tasks" "$archive_body" "$multi_id" "$body_file"
+      add_tasks_axi "$fakebin" "$tasks" "$archive_body" "$multi_id" "$body_file" "$show_full"
     fi
     if [ "$quota" = "0" ]; then
       rm -f "$fakebin/quota-axi"
@@ -292,6 +306,7 @@ treehouse without --lease reports an upgrade, gh auth is fine^0^0.2.2^1^-^grep^M
 compatible tasks-axi is reported available by default^1^0.2.2^1^-^exact^TASKS_AXI: available^
 missing tasks-axi is required by default^1^-^1^-^exact^MISSING: tasks-axi (install: npm install -g tasks-axi)^
 incompatible tasks-axi is required by default^1^0.2.1^1^-^exact^MISSING: tasks-axi (install: npm install -g tasks-axi)^
+tasks-axi without full show is required by default^1^0.2.2:nofull^1^-^exact^MISSING: tasks-axi (install: npm install -g tasks-axi)^
 tasks-axi without archive-body is required by default^1^0.2.2:noarchive^1^-^exact^MISSING: tasks-axi (install: npm install -g tasks-axi)^
 tasks-axi without body-file replacement is required by default^1^0.2.2:nobodyfile^1^-^exact^MISSING: tasks-axi (install: npm install -g tasks-axi)^
 tasks-axi without multi-id mv is required by default^1^0.2.2:nomulti^1^-^exact^MISSING: tasks-axi (install: npm install -g tasks-axi)^
