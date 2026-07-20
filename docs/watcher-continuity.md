@@ -71,8 +71,7 @@ Command: `FM_CLAUDE_LIVE_E2E=1 tests/fm-claude-continuity-live-e2e.test.sh`.
 Observed result: `ok - Claude 2.1.214 (Claude Code) live E2E refused only the post-completion fleet command with exact re-arm guidance`.
 
 Codex ran the real one-second foreground watcher checkpoint and returned `checkpoint: no actionable wake within 1s` without switching to the arm wrapper.
-Command: `FM_CODEX_LIVE_E2E=1 tests/fm-codex-continuity-live-e2e.test.sh`.
-Observed result: `ok - codex-cli 0.144.4 live E2E preserved the one-second foreground checkpoint path`.
+The command, observed result, and the explicitly pending multi-turn child telemetry are owned by [turnend-guard.md](turnend-guard.md#2026-07-20-codex-checkpoint-and-reassertion-regression).
 
 OpenCode ran its persistent TUI plugin, established the first watcher from `session.idle`, received an actionable close, and ledger-linked a live successor before the model handled the wake.
 The model executed no watcher-arm command and the turn-end backstop did not fire.

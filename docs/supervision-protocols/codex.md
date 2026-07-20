@@ -13,4 +13,4 @@ When this session owns supervision and away mode is not active:
 
 Codex cannot reason while a foreground tool call is running.
 The bounded checkpoint returns control regularly so user messages and queued wakes can be handled without relying on background-task wake semantics.
-With work in flight, the Codex Stop hook reasserts until a live watcher lock proves the next checkpoint is under way, so one returned checkpoint is never treated as restored supervision.
+With work in flight, the Codex Stop hook reasserts up to its documented bound until a live watcher lock proves the next checkpoint is under way, so one returned checkpoint is never treated as restored supervision.
