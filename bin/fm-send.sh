@@ -214,6 +214,7 @@ else
   MESSAGE=$*
   if [ "$MARK_FROM_FIRSTMATE" = 1 ]; then
     fm_message_mark_from_firstmate "$MESSAGE" MESSAGE
+    deadline_signature=$(status_file_signature "$STATE/$(fm_send_id_from_meta "$TARGET_META").status")
   fi
   # Slash commands open a completion popup in some TUIs (verified on codex);
   # submitting too fast selects nothing, so give the popup time to settle before
@@ -263,6 +264,6 @@ else
     target_id=$(fm_send_id_from_meta "$TARGET_META")
     secondmate_deadline_write "$STATE/.secondmate-deadline-$target_id" \
       "$(( $(date +%s) + deadline_secs ))" \
-      "$(status_file_signature "$STATE/$target_id.status")"
+      "$deadline_signature"
   fi
 fi

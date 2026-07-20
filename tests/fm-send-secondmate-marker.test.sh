@@ -20,6 +20,8 @@ set -u
 . "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 # shellcheck source=bin/fm-marker-lib.sh
 . "$ROOT/bin/fm-marker-lib.sh"
+# shellcheck source=bin/fm-classify-lib.sh
+. "$ROOT/bin/fm-classify-lib.sh"
 
 SEND="$ROOT/bin/fm-send.sh"
 
@@ -50,6 +52,9 @@ case "${1:-}" in
     done
     if [ "$literal" = 1 ]; then
       printf '%s' "${1:-}" >> "$FM_SEND_LOG"
+      if [ -n "${FM_SEND_STATUS_FILE:-}" ]; then
+        printf '%s\n' "${FM_SEND_STATUS_LINE:-done: completed}" > "$FM_SEND_STATUS_FILE"
+      fi
     fi
     exit 0 ;;
   display-message)
@@ -245,6 +250,25 @@ test_secondmate_send_arms_deadline() {
   pass "fm-send: successful secondmate routing arms a durable completion deadline"
 }
 
+test_secondmate_deadline_uses_presend_status_signature() {
+  local dir fb log home rc deadline signature
+  dir="$TMP_ROOT/deadline-presend"; mkdir -p "$dir"
+  fb=$(make_stubs "$dir"); log="$dir/send.log"
+  home=$(setup_home deadline-presend)
+  fm_write_secondmate_meta "$home/state/domain.meta" "$home" "sess:fm-domain"
+  printf 'working: prior assignment\n' > "$home/state/domain.status"
+  signature=$(status_file_signature "$home/state/domain.status")
+  export FM_SEND_STATUS_FILE="$home/state/domain.status"
+  export FM_SEND_STATUS_LINE='done: completed promptly'
+  run_send "$fb" "$home" "$log" domain "route this"; rc=$?
+  unset FM_SEND_STATUS_FILE FM_SEND_STATUS_LINE
+  expect_code 0 "$rc" "secondmate send with a prompt status response should succeed"
+  read -r deadline got_signature < "$home/state/.secondmate-deadline-domain"
+  [ "$got_signature" = "$signature" ] \
+    || fail "secondmate deadline captured the post-send response instead of the pre-send status"
+  pass "fm-send: secondmate deadline recognizes status written during dispatch as a response"
+}
+
 test_secondmate_target_is_marked
 test_exact_secondmate_task_id_is_marked
 test_crewmate_target_is_not_marked
@@ -254,3 +278,4 @@ test_marker_is_label_plus_invisible_separator
 test_marker_transformation_is_idempotent
 test_marked_send_preserves_trailing_newlines
 test_secondmate_send_arms_deadline
+test_secondmate_deadline_uses_presend_status_signature
