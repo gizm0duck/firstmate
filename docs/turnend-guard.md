@@ -151,8 +151,10 @@ No Herdr command was issued and no fleet state was touched; the experiment wrote
 Codex `0.144.4` was exercised in a throwaway cloned project with an isolated temporary `FM_HOME`.
 Command run: `FM_CODEX_LIVE_E2E=1 tests/fm-codex-continuity-live-e2e.test.sh`.
 Exact output: `ok - codex-cli 0.144.4 live E2E preserved the one-second foreground checkpoint path`.
-The hermetic companion `tests/fm-turnend-guard.test.sh` then verified the durable half of the fix: after a returned Codex checkpoint leaves no live watcher lock, a `stop_hook_active=true` Stop payload exits 2 again rather than ending blind.
-The live test proves the real Codex foreground checkpoint path still runs in an isolated home, while the guard test proves its required reassertion condition without depending on a long-lived live session.
+The deterministic regression suite `tests/fm-turnend-guard.test.sh` proves that a returned Codex checkpoint with no live watcher lock causes a `stop_hook_active=true` Stop payload to exit 2 again.
+The isolated live test proves only that Codex 0.144.4 runs one real foreground checkpoint in a temporary home.
+Pending verification: a multi-turn live loop with a long-running child has not been run from this seat.
+After merge, fleet-trial watcher-beacon telemetry must prove that the beacon remains fresh across multiple Codex turn ends while child work is in flight.
 
 ## Tests
 
