@@ -342,6 +342,21 @@ test_hook_loop_guard_allows_retry() {
   pass "fm-turnend-guard: stop_hook_active=true always allows the stop (never blocks twice in one turn)"
 }
 
+test_codex_hook_reasserts_after_a_returned_checkpoint() {
+  local dir out status
+  dir=$(make_primary_dir "$TMP_ROOT/hook-codex-reassert")
+  : > "$dir/state/task1.meta"
+  cat > "$dir/bin/fm-harness.sh" <<'SH'
+#!/usr/bin/env bash
+printf 'codex\n'
+SH
+  chmod +x "$dir/bin/fm-harness.sh"
+  out=$(run_hook "$dir" true); status=$?
+  expect_code 2 "$status" "Codex must not accept stop_hook_active without a live watcher"
+  assert_contains "$out" 'TURN WOULD END BLIND' "Codex reassertion omitted the blind-turn alarm"
+  pass "fm-turnend-guard: Codex reasserts after a returned checkpoint until a watcher is live"
+}
+
 # A secondmate's OWN home runs a primary firstmate session and must be guarded
 # exactly like the main primary. This was the guard's proven blind spot: the
 # .fm-secondmate-home marker used to early-exit here, so an overnight secondmate
@@ -917,6 +932,7 @@ test_hook_x_mode_reason_sources_cadence
 test_hook_ignores_repo_state_when_fm_home_set
 test_hook_uses_state_override
 test_hook_loop_guard_allows_retry
+test_codex_hook_reasserts_after_a_returned_checkpoint
 test_hook_blocks_in_secondmate_own_home
 test_hook_silent_in_idle_secondmate_home
 test_hook_secondmate_loop_guard_allows_retry

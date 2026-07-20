@@ -61,7 +61,6 @@ PAYLOAD=$(cat 2>/dev/null || true)
 command -v jq >/dev/null 2>&1 || exit 0
 
 STOP_HOOK_ACTIVE=$(printf '%s' "$PAYLOAD" | jq -r '.stop_hook_active // false' 2>/dev/null) || exit 0
-[ "$STOP_HOOK_ACTIVE" = "true" ] && exit 0
 
 # --- scope precisely to a PRIMARY checkout ----------------------------------
 # A genuinely-marked secondmate home runs its OWN primary firstmate session, so
@@ -84,6 +83,17 @@ fm_primary_scope_matches "$FM_ROOT" "$STATE" || exit 0
 fm_supervision_status "$STATE" "$GRACE"
 [ "$FM_SUP_IN_FLIGHT" -gt 0 ] || exit 0
 fm_watcher_healthy "$STATE" "$WATCH" "$GRACE" "$FM_HOME" && exit 0
+
+# A bounded Codex checkpoint releases its foreground watcher lock before the
+# forced continuation ends. Its old stop_hook_active bypass therefore let that
+# continuation immediately end blind. Reassert the guard until a real watcher is
+# healthy; the fresh lock is the proof, not completion of one checkpoint.
+# Other harness adapters retain their one-follow-up loop guard because they use
+# passive callbacks that cannot safely block recursively.
+HARNESS=$("$SCRIPT_DIR/fm-harness.sh" 2>/dev/null || true)
+if [ "$STOP_HOOK_ACTIVE" = true ] && [ "$HARNESS" != codex ]; then
+  exit 0
+fi
 
 afk=0
 [ -e "$STATE/.afk" ] && afk=1

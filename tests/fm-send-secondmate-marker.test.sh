@@ -231,6 +231,20 @@ test_marked_send_preserves_trailing_newlines() {
   pass "fm-send: marked secondmate payload preserves trailing newline bytes"
 }
 
+test_secondmate_send_arms_deadline() {
+  local dir fb log home rc deadline now
+  dir="$TMP_ROOT/deadline"; mkdir -p "$dir"
+  fb=$(make_stubs "$dir"); log="$dir/send.log"
+  home=$(setup_home deadline)
+  fm_write_secondmate_meta "$home/state/domain.meta" "$home" "sess:fm-domain"
+  now=$(date +%s)
+  FM_SECONDMATE_DEADLINE_SECS=60 run_send "$fb" "$home" "$log" domain "route this"; rc=$?
+  expect_code 0 "$rc" "secondmate send should arm its completion deadline"
+  deadline=$(cat "$home/state/.secondmate-deadline-domain")
+  [ "$deadline" -ge $((now + 55)) ] || fail "secondmate deadline was not armed from successful send: $deadline"
+  pass "fm-send: successful secondmate routing arms a durable completion deadline"
+}
+
 test_secondmate_target_is_marked
 test_exact_secondmate_task_id_is_marked
 test_crewmate_target_is_not_marked
@@ -239,3 +253,4 @@ test_key_path_is_not_marked
 test_marker_is_label_plus_invisible_separator
 test_marker_transformation_is_idempotent
 test_marked_send_preserves_trailing_newlines
+test_secondmate_send_arms_deadline

@@ -80,6 +80,14 @@ mkdir -p "$STATE"
 WATCH_LOCK="$STATE/.watch.lock"
 WATCH_PATH="$SCRIPT_DIR/fm-watch.sh"
 WATCHER_STALE_GRACE=${FM_WATCHER_STALE_GRACE:-${FM_GUARD_GRACE:-300}}
+# A secondmate pane may correctly be idle, so stale-pane detection deliberately
+# excludes it. This independent probe detects the only unsafe combination: a
+# stale/missing watcher beacon in its own home while a live child can still
+# produce a wake. It confirms the stale sample after a short gap to avoid racing
+# a routed send's normal re-arm.
+SECONDMATE_SUPERVISION_GRACE=${FM_SECONDMATE_SUPERVISION_GRACE:-600}
+SECONDMATE_SUPERVISION_CONFIRM_SECS=${FM_SECONDMATE_SUPERVISION_CONFIRM_SECS:-5}
+SECONDMATE_DEADLINE_SECS=${FM_SECONDMATE_DEADLINE_SECS:-900}
 # The singleton-lock acquisition, EXIT trap, and the blocking supervision loop
 # all live below the source guard at the very bottom of this file (see "Main
 # entry"). Sourcing this file for unit tests therefore loads the functions -
@@ -175,6 +183,100 @@ triage_log() {
     tail -n 2000 "$TRIAGE_LOG" > "$TRIAGE_LOG.tmp" 2>/dev/null && mv -f "$TRIAGE_LOG.tmp" "$TRIAGE_LOG" 2>/dev/null
     rm -f "$TRIAGE_LOG.tmp" 2>/dev/null || true
   fi
+}
+
+secondmate_child_awaiting_count() {  # <secondmate-home>
+  local home=$1 child_state meta child status status_file beat backend target label count=0
+  child_state="$home/state"
+  [ -d "$child_state" ] || { printf '0'; return; }
+  for meta in "$child_state"/*.meta; do
+    [ -e "$meta" ] || continue
+    [ "$(fm_meta_get "$meta" kind)" = secondmate ] && continue
+    child=$(basename "$meta" .meta)
+    status_file="$child_state/$child.status"
+    status=$(last_status_line "$status_file")
+    if ! status_is_awaiting_wake "$status"; then
+      # A completed child is normally settled and must not keep an idle mate
+      # alarming forever. But a done event written AFTER the mate's last beacon
+      # is precisely the stranded completion this probe exists to surface.
+      beat="$child_state/.last-watcher-beat"
+      if [ "$(status_line_verb "$status")" != done ] || [ ! -e "$beat" ] \
+        || [ "$(stat_mtime "$status_file")" -le "$(stat_mtime "$beat")" ]; then
+        continue
+      fi
+    fi
+    backend=$(fm_backend_of_meta "$meta")
+    target=$(fm_backend_target_of_meta "$meta")
+    label=$(fm_meta_get "$meta" label)
+    [ -n "$backend" ] && [ -n "$target" ] || continue
+    fm_backend_target_exists "$backend" "$target" "$label" || continue
+    count=$((count + 1))
+  done
+  printf '%s' "$count"
+}
+
+secondmate_beacon_stale() {  # <secondmate-home>
+  local home=$1 beat age
+  beat="$home/state/.last-watcher-beat"
+  [ -e "$beat" ] || return 0
+  age=$(fm_path_age "$beat")
+  [ "$age" -ge "$SECONDMATE_SUPERVISION_GRACE" ]
+}
+
+secondmate_supervision_scan() {
+  local meta mate home awaiting suspects entry fresh_awaiting
+  suspects=''
+  for meta in "$STATE"/*.meta; do
+    [ -e "$meta" ] || continue
+    [ "$(fm_meta_get "$meta" kind)" = secondmate ] || continue
+    home=$(fm_meta_get "$meta" home)
+    [ -n "$home" ] && [ -d "$home/state" ] || continue
+    awaiting=$(secondmate_child_awaiting_count "$home")
+    [ "$awaiting" -gt 0 ] || continue
+    secondmate_beacon_stale "$home" || continue
+    mate=$(basename "$meta" .meta)
+    suspects="${suspects}${mate}"$'\t'"${home}"$'\n'
+  done
+  [ -n "$suspects" ] || return 1
+  [ "$SECONDMATE_SUPERVISION_CONFIRM_SECS" -gt 0 ] && sleep "$SECONDMATE_SUPERVISION_CONFIRM_SECS"
+  while IFS=$(printf '\t') read -r mate home; do
+    [ -n "$mate" ] || continue
+    fresh_awaiting=$(secondmate_child_awaiting_count "$home")
+    [ "$fresh_awaiting" -gt 0 ] || continue
+    secondmate_beacon_stale "$home" || continue
+    reason="supervision: $mate has $fresh_awaiting child task(s) awaiting a wake but its own watcher beacon is stale - peek $mate and repair its supervision"
+    fm_wake_append supervision "$mate" "$reason" || exit 1
+    wake "$reason"
+  done <<EOF
+$suspects
+EOF
+  return 1
+}
+
+secondmate_deadline_scan() {
+  local meta mate deadline status now reason
+  now=$(date +%s)
+  for meta in "$STATE"/*.meta; do
+    [ -e "$meta" ] || continue
+    [ "$(fm_meta_get "$meta" kind)" = secondmate ] || continue
+    mate=$(basename "$meta" .meta)
+    deadline="$STATE/.secondmate-deadline-$mate"
+    [ -e "$deadline" ] || continue
+    status=$(last_status_line "$STATE/$mate.status")
+    if ! status_is_awaiting_wake "$status"; then
+      rm -f "$deadline"
+      continue
+    fi
+    case "$(cat "$deadline" 2>/dev/null || true)" in
+      ''|*[!0-9]*) rm -f "$deadline"; continue ;;
+    esac
+    [ "$now" -lt "$(cat "$deadline")" ] && continue
+    reason="deadline: secondmate $mate acknowledged routed work but has not reported completion or a heartbeat - inspect $mate"
+    printf '%s\n' $((now + SECONDMATE_DEADLINE_SECS)) > "$deadline"
+    fm_wake_append deadline "$mate" "$reason" || exit 1
+    wake "$reason"
+  done
+  return 1
 }
 
 hash_pane() {
@@ -753,6 +855,11 @@ while :; do
   # Liveness beacon for fm-guard.sh: a fresh mtime here means a watcher is
   # alive. Supervision scripts warn when this goes stale with tasks in flight.
   touch "$STATE/.last-watcher-beat"
+
+  # Layer 0: secondmates need a home-level probe because their intentionally idle
+  # panes are exempt from stale-pane detection below.
+  secondmate_supervision_scan
+  secondmate_deadline_scan
 
   # Slow per-task checks (firstmate writes these, e.g. a merged-PR poll).
   # Time-based via .last-check mtime so the cadence survives watcher restarts.

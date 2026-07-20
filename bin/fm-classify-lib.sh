@@ -112,6 +112,21 @@ status_is_paused_or_captain_held() {  # <status-line>
   [ "$verb" = "${FM_CLASSIFY_CAPTAIN_HELD_VERB:-$FM_CLASSIFY_CAPTAIN_HELD_VERB_DEFAULT}" ]
 }
 
+# 0 when a child's latest event still needs its supervisor to be able to wake.
+# Terminal and deliberately parked children cannot emit a useful future wake, so
+# they must never make an otherwise idle secondmate look supervision-stalled.
+# This is deliberately a last-event predicate: the secondmate supervision probe
+# needs only to distinguish a potentially wake-producing live child from a child
+# that has already handed control back or is parked for a human decision.
+status_is_awaiting_wake() {  # <status-line>
+  local verb
+  verb=$(status_line_verb "$1")
+  case "$verb" in
+    done|failed|blocked|needs-decision|paused) return 1 ;;
+    *) return 0 ;;
+  esac
+}
+
 # --- durable keyed decisions ------------------------------------------------
 #
 # The status stream is an append-only EVENT log. Reading it last-event-wins

@@ -146,6 +146,14 @@ So the model was re-invoked solely by the background task's completion while idl
 This matches the harness tool contract that a `run_in_background` task "keeps running across turns and re-invokes you when it exits", and reproduces the 11s latency the task audit measured independently on the same harness version.
 No Herdr command was issued and no fleet state was touched; the experiment wrote only to the session scratchpad, which was discarded.
 
+### 2026-07-20: Codex checkpoint and reassertion regression
+
+Codex `0.144.4` was exercised in a throwaway cloned project with an isolated temporary `FM_HOME`.
+Command run: `FM_CODEX_LIVE_E2E=1 tests/fm-codex-continuity-live-e2e.test.sh`.
+Exact output: `ok - codex-cli 0.144.4 live E2E preserved the one-second foreground checkpoint path`.
+The hermetic companion `tests/fm-turnend-guard.test.sh` then verified the durable half of the fix: after a returned Codex checkpoint leaves no live watcher lock, a `stop_hook_active=true` Stop payload exits 2 again rather than ending blind.
+The live test proves the real Codex foreground checkpoint path still runs in an isolated home, while the guard test proves its required reassertion condition without depending on a long-lived live session.
+
 ## Tests
 
 `tests/fm-turnend-guard.test.sh` covers the shared predicate, primary scoping (including a secondmate's own home being guarded like the main primary while its child worktrees stay exempt), `FM_HOME` and `FM_STATE_OVERRIDE` precedence, Pi logical-run latch behavior for no-tool and multi-tool runs, fail-open behavior without `jq`, tracked hook registration for all five harnesses, and the Grok adapter's forced-resume loop guard and permission-mode regression.

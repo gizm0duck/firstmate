@@ -252,4 +252,13 @@ else
   # crewmate actually working instead of the stale idle pane. FM_SEND_SETTLE=0
   # disables it. Scoped to this path only, never the shared submit core.
   [ "${FM_SEND_SETTLE:-1}" = 0 ] || sleep "${FM_SEND_SETTLE:-1}"
+  # Receipt is not progress. A routed secondmate request gets a durable,
+  # idempotent deadline which the parent watcher clears on a terminal report and
+  # otherwise surfaces as a bounded heartbeat/completion reminder.
+  if [ "$MARK_FROM_FIRSTMATE" = 1 ]; then
+    deadline_secs=${FM_SECONDMATE_DEADLINE_SECS:-900}
+    case "$deadline_secs" in ''|*[!0-9]*|0) deadline_secs=900 ;; esac
+    target_id=$(fm_send_id_from_meta "$TARGET_META")
+    printf '%s\n' "$(( $(date +%s) + deadline_secs ))" > "$STATE/.secondmate-deadline-$target_id"
+  fi
 fi
