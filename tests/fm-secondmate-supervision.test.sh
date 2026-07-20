@@ -199,6 +199,22 @@ test_deadline_refreshes_on_status_activity() {
   pass "secondmate supervision: status activity refreshes the routing deadline"
 }
 
+test_deadline_write_failure_does_not_enqueue_alarm() {
+  local paths parent home deadline signature errors
+  paths=$(make_fixture deadline-write-failure 'working: accepted' 1); parent=${paths%%:*}; home=${paths#*:}
+  activate_fixture "$parent"
+  deadline="$parent/state/.secondmate-deadline-mate"
+  signature=$(status_file_signature "$parent/state/mate.status")
+  printf '1 %s\n' "$signature" > "$deadline"
+  secondmate_deadline_write() { return 1; }
+  errors="$parent/errors"
+  secondmate_deadline_scan >/dev/null 2>"$errors" || true
+  secondmate_deadline_scan >/dev/null 2>>"$errors" || true
+  [ ! -s "$parent/wakes" ] || fail "deadline write failure queued an alarm: $(cat "$parent/wakes")"
+  assert_contains "$(cat "$errors")" 'error: could not refresh secondmate deadline for mate' "deadline write failure was not surfaced"
+  pass "secondmate supervision: deadline write failure does not enqueue an alarm"
+}
+
 test_invalid_deadline_setting_falls_back_to_default
 test_fresh_beacon_with_inflight_child_is_silent
 test_stale_beacon_with_inflight_child_alarms
@@ -210,3 +226,4 @@ test_legacy_secondmate_home_backfill_alarms
 test_deadline_arms_and_clears_on_terminal_status
 test_deadline_does_not_clear_on_presend_terminal_status
 test_deadline_refreshes_on_status_activity
+test_deadline_write_failure_does_not_enqueue_alarm

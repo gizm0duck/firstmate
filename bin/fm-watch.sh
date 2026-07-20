@@ -282,12 +282,18 @@ secondmate_deadline_scan() {
         rm -f "$deadline"
         continue
       fi
-      secondmate_deadline_write "$deadline" "$((now + SECONDMATE_DEADLINE_SECS))" "$signature"
+      if ! secondmate_deadline_write "$deadline" "$((now + SECONDMATE_DEADLINE_SECS))" "$signature"; then
+        printf 'error: could not refresh secondmate deadline for %s\n' "$mate" >&2
+        return 1
+      fi
       continue
     fi
     [ "$now" -lt "$expiry" ] && continue
     reason="deadline: secondmate $mate acknowledged routed work but has not reported completion or a heartbeat - inspect $mate"
-    secondmate_deadline_write "$deadline" "$((now + SECONDMATE_DEADLINE_SECS))" "$signature"
+    if ! secondmate_deadline_write "$deadline" "$((now + SECONDMATE_DEADLINE_SECS))" "$signature"; then
+      printf 'error: could not refresh secondmate deadline for %s\n' "$mate" >&2
+      return 1
+    fi
     fm_wake_append deadline "$mate" "$reason" || exit 1
     wake "$reason"
   done
