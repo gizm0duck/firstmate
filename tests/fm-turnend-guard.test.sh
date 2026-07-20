@@ -382,6 +382,27 @@ SH
   pass "fm-turnend-guard: an allowed stop resets Codex reassertions"
 }
 
+test_codex_reassertion_counter_resets_for_new_stop_sequence() {
+  local dir out status
+  dir=$(make_primary_dir "$TMP_ROOT/hook-codex-new-sequence")
+  : > "$dir/state/task1.meta"
+  cat > "$dir/bin/fm-harness.sh" <<'SH'
+#!/usr/bin/env bash
+printf 'codex\n'
+SH
+  chmod +x "$dir/bin/fm-harness.sh"
+  run_hook "$dir" true >/dev/null 2>&1 || status=$?
+  run_hook "$dir" true >/dev/null 2>&1 || status=$?
+  out=$(run_hook "$dir" true); status=$?
+  expect_code 0 "$status" "Codex must fail open after exhausting one Stop sequence"
+  out=$(run_hook "$dir" false); status=$?
+  expect_code 2 "$status" "a new Codex Stop sequence must block before its fresh reassertions"
+  out=$(run_hook "$dir" true); status=$?
+  expect_code 2 "$status" "a new Codex Stop sequence must receive a fresh reassertion budget"
+  [ "$(cat "$dir/state/.codex-turnend-reassertions")" = 1 ] || fail "new Codex Stop sequence did not reset its counter"
+  pass "fm-turnend-guard: a new Codex Stop sequence resets reassertions"
+}
+
 test_codex_reassertion_counter_write_failure_fails_open() {
   local dir out status
   dir=$(make_primary_dir "$TMP_ROOT/hook-codex-counter-write-failure")
@@ -975,6 +996,7 @@ test_hook_uses_state_override
 test_hook_loop_guard_allows_retry
 test_codex_hook_reasserts_after_a_returned_checkpoint
 test_codex_reassertion_counter_resets_when_stop_is_allowed
+test_codex_reassertion_counter_resets_for_new_stop_sequence
 test_codex_reassertion_counter_write_failure_fails_open
 test_hook_blocks_in_secondmate_own_home
 test_hook_silent_in_idle_secondmate_home

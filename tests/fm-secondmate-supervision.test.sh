@@ -98,15 +98,17 @@ test_supervision_alarm_is_suppressed_until_evidence_changes() {
 }
 
 test_supervision_suppression_write_failure_does_not_enqueue_alarm() {
-  local paths parent home errors
+  local paths parent home errors out status=0
   paths=$(make_fixture supervision-suppression-write-failure 'working: active' 1); parent=${paths%%:*}; home=${paths#*:}
   activate_fixture "$parent"
   touch -t 202001010000 "$home/state/.last-watcher-beat"
   secondmate_supervision_suppression_write() { return 1; }
   errors="$parent/errors"
-  secondmate_supervision_scan >/dev/null 2>"$errors" || true
+  out=$(secondmate_supervision_scan 2>"$errors") || status=$?
+  [ "$status" -eq "$SECONDMATE_SCAN_FATAL" ] || fail "suppression persistence failure did not return the fatal scan status"
   [ ! -s "$parent/wakes" ] || fail "suppression write failure queued a supervision alarm"
   assert_contains "$(cat "$errors")" 'error: could not persist secondmate supervision suppression for mate' "suppression write failure was not surfaced"
+  assert_contains "$out" 'watcher: FAILED - could not persist secondmate supervision suppression for mate' "suppression write failure was not forwarded to watcher supervisors"
   . "$ROOT/bin/fm-classify-lib.sh"
   pass "secondmate supervision: suppression persistence failure does not enqueue an alarm"
 }
@@ -229,7 +231,7 @@ test_deadline_refreshes_on_status_activity() {
 }
 
 test_deadline_write_failure_does_not_enqueue_alarm() {
-  local paths parent home deadline signature errors
+  local paths parent home deadline signature errors out status=0
   paths=$(make_fixture deadline-write-failure 'working: accepted' 1); parent=${paths%%:*}; home=${paths#*:}
   activate_fixture "$parent"
   deadline="$parent/state/.secondmate-deadline-mate"
@@ -237,10 +239,12 @@ test_deadline_write_failure_does_not_enqueue_alarm() {
   printf '1 %s\n' "$signature" > "$deadline"
   secondmate_deadline_write() { return 1; }
   errors="$parent/errors"
-  secondmate_deadline_scan >/dev/null 2>"$errors" || true
+  out=$(secondmate_deadline_scan 2>"$errors") || status=$?
+  [ "$status" -eq "$SECONDMATE_SCAN_FATAL" ] || fail "deadline persistence failure did not return the fatal scan status"
   secondmate_deadline_scan >/dev/null 2>>"$errors" || true
   [ ! -s "$parent/wakes" ] || fail "deadline write failure queued an alarm: $(cat "$parent/wakes")"
   assert_contains "$(cat "$errors")" 'error: could not refresh secondmate deadline for mate' "deadline write failure was not surfaced"
+  assert_contains "$out" 'watcher: FAILED - could not refresh secondmate deadline for mate' "deadline write failure was not forwarded to watcher supervisors"
   pass "secondmate supervision: deadline write failure does not enqueue an alarm"
 }
 

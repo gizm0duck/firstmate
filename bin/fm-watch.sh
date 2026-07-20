@@ -97,6 +97,7 @@ SECONDMATE_SUPERVISION_GRACE=${FM_SECONDMATE_SUPERVISION_GRACE:-600}
 SECONDMATE_SUPERVISION_CONFIRM_SECS=${FM_SECONDMATE_SUPERVISION_CONFIRM_SECS:-5}
 SECONDMATE_DEADLINE_SECS=${FM_SECONDMATE_DEADLINE_SECS:-900}
 case "$SECONDMATE_DEADLINE_SECS" in ''|*[!0-9]*|0) SECONDMATE_DEADLINE_SECS=900 ;; esac
+SECONDMATE_SCAN_FATAL=75
 # The singleton-lock acquisition, EXIT trap, and the blocking supervision loop
 # all live below the source guard at the very bottom of this file (see "Main
 # entry"). Sourcing this file for unit tests therefore loads the functions -
@@ -249,6 +250,12 @@ secondmate_beacon_stale() {  # <secondmate-home>
   [ "$age" -ge "$SECONDMATE_SUPERVISION_GRACE" ]
 }
 
+secondmate_scan_persistence_failure() {
+  printf 'error: %s\n' "$1" >&2
+  printf 'watcher: FAILED - %s\n' "$1"
+  return "$SECONDMATE_SCAN_FATAL"
+}
+
 secondmate_supervision_scan() {
   local meta mate home awaiting suspects fresh_awaiting suppression evidence reason
   suspects=''
@@ -279,8 +286,8 @@ secondmate_supervision_scan() {
     [ "$(cat "$suppression" 2>/dev/null || true)" = "$evidence" ] && continue
     reason="supervision: $mate has $fresh_awaiting child task(s) awaiting a wake but its own watcher beacon is stale - peek $mate and repair its supervision"
     if ! secondmate_supervision_suppression_write "$suppression" "$evidence"; then
-      printf 'error: could not persist secondmate supervision suppression for %s\n' "$mate" >&2
-      return 1
+      secondmate_scan_persistence_failure "could not persist secondmate supervision suppression for $mate"
+      return $?
     fi
     if ! fm_wake_append supervision "$mate" "$reason"; then
       rm -f "$suppression"
@@ -316,16 +323,16 @@ secondmate_deadline_scan() {
         continue
       fi
       if ! secondmate_deadline_write "$deadline" "$((now + SECONDMATE_DEADLINE_SECS))" "$signature"; then
-        printf 'error: could not refresh secondmate deadline for %s\n' "$mate" >&2
-        return 1
+        secondmate_scan_persistence_failure "could not refresh secondmate deadline for $mate"
+        return $?
       fi
       continue
     fi
     [ "$now" -lt "$expiry" ] && continue
     reason="deadline: secondmate $mate acknowledged routed work but has not reported completion or a heartbeat - inspect $mate"
     if ! secondmate_deadline_write "$deadline" "$((now + SECONDMATE_DEADLINE_SECS))" "$signature"; then
-      printf 'error: could not refresh secondmate deadline for %s\n' "$mate" >&2
-      return 1
+      secondmate_scan_persistence_failure "could not refresh secondmate deadline for $mate"
+      return $?
     fi
     fm_wake_append deadline "$mate" "$reason" || exit 1
     wake "$reason"
@@ -912,8 +919,14 @@ while :; do
 
   # Layer 0: secondmates need a home-level probe because their intentionally idle
   # panes are exempt from stale-pane detection below.
-  secondmate_supervision_scan
-  secondmate_deadline_scan
+  secondmate_supervision_scan || {
+    scan_rc=$?
+    [ "$scan_rc" -eq "$SECONDMATE_SCAN_FATAL" ] && exit "$scan_rc"
+  }
+  secondmate_deadline_scan || {
+    scan_rc=$?
+    [ "$scan_rc" -eq "$SECONDMATE_SCAN_FATAL" ] && exit "$scan_rc"
+  }
 
   # Slow per-task checks (firstmate writes these, e.g. a merged-PR poll).
   # Time-based via .last-check mtime so the cadence survives watcher restarts.

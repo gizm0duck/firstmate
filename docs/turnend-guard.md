@@ -51,7 +51,7 @@ All verified primary harnesses have a tracked integration:
 Claude and Codex support a direct blocking Stop hook.
 For those harnesses, exit status 2 plus stderr from `bin/fm-turnend-guard.sh` blocks the stop and feeds the reason back into the model.
 Both payloads include `stop_hook_active`; when it is true, the shared guard exits 0 so the harness can end after one forced continuation, except that Codex reasserts at most twice until a live watcher lock exists after a returned foreground checkpoint.
-If the second Codex reassertion still has no lock, the guard retains its durable counter until supervision recovery is proven, warns loudly on stderr, and fails open.
+If the second Codex reassertion still has no lock, the guard retains its durable counter through that forced continuation, warns loudly on stderr, and fails open; the next `stop_hook_active=false` Stop sequence resets the bounded budget.
 For a secondmate home, the parent home's secondmate-supervision probe is the deliberate backstop for that residual blind window.
 
 OpenCode, Pi, and Grok expose passive lifecycle callbacks for this purpose.

@@ -32,8 +32,8 @@
 # the stop on that signal, while Codex may reassert twice before failing open.
 # Passive harness adapters provide their own one-follow-up guard before calling
 # this script.
-# The Codex reassertion counter bounds the continuation sequence and fails open
-# after two reassertions until supervision is healthy or no work remains.
+# The Codex reassertion counter bounds each forced continuation sequence and
+# fails open after two reassertions.
 set -u
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -76,6 +76,8 @@ STOP_HOOK_ACTIVE=$(printf '%s' "$PAYLOAD" | jq -r '.stop_hook_active // false' 2
 # so this exempts them while guarding every real secondmate home.
 fm_primary_scope_matches "$FM_ROOT" "$STATE" || exit 0
 
+HARNESS=$("$SCRIPT_DIR/fm-harness.sh" 2>/dev/null || true)
+
 clear_codex_reassertions() {
   rm -f "$CODEX_REASSERT_COUNTER"
 }
@@ -91,6 +93,10 @@ write_codex_reassertions() {  # <count>
   return 1
 }
 
+if [ "$HARNESS" = codex ] && [ "$STOP_HOOK_ACTIVE" != true ]; then
+  clear_codex_reassertions
+fi
+
 # --- the actual predicate ----------------------------------------------------
 # shellcheck source=bin/fm-wake-lib.sh
 . "$SCRIPT_DIR/fm-wake-lib.sh"
@@ -105,7 +111,6 @@ fm_watcher_healthy "$STATE" "$WATCH" "$GRACE" "$FM_HOME" && { clear_codex_reasse
 # real watcher is healthy; the fresh lock is the proof, not one checkpoint.
 # Other harness adapters retain their one-follow-up loop guard because they use
 # passive callbacks that cannot safely block recursively.
-HARNESS=$("$SCRIPT_DIR/fm-harness.sh" 2>/dev/null || true)
 if [ "$STOP_HOOK_ACTIVE" = true ] && [ "$HARNESS" != codex ]; then
   exit 0
 fi
