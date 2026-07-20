@@ -36,6 +36,11 @@
 #                          unsafe state checks were refused without execution
 #   heartbeat              fleet-scan backstop found an unsurfaced captain-relevant
 #                          status, unless afk is active
+#   supervision: <mate>    a recorded secondmate home has a stale watcher beacon
+#                          while a live child may still emit, or has just emitted,
+#                          a wake
+#   deadline: <mate>       a secondmate acknowledged routed work but has not
+#                          reported completion or a heartbeat before its deadline
 # For normal supervision, resume the session-start primary-harness protocol
 # after each printed reason. Direct duplicate invocations of this script still
 # no-op through the watcher singleton lock.
