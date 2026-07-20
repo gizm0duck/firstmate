@@ -229,7 +229,7 @@ secondmate_beacon_stale() {  # <secondmate-home>
 }
 
 secondmate_supervision_scan() {
-  local meta mate home awaiting suspects entry fresh_awaiting
+  local meta mate home awaiting suspects fresh_awaiting
   suspects=''
   for meta in "$STATE"/*.meta; do
     [ -e "$meta" ] || continue
