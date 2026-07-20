@@ -64,6 +64,7 @@ test_invalid_deadline_setting_falls_back_to_default() {
 
 test_fresh_beacon_with_inflight_child_is_silent() {
   local paths parent home
+  SECONDMATE_SUPERVISION_GRACE=60
   paths=$(make_fixture fresh 'working: active' 1); parent=${paths%%:*}; home=${paths#*:}
   activate_fixture "$parent"
   touch "$home/state/.last-watcher-beat"
@@ -80,6 +81,34 @@ test_stale_beacon_with_inflight_child_alarms() {
   run_probe
   assert_contains "$(cat "$parent/wakes")" 'supervision: mate has 1 child task(s) awaiting a wake' "stale live child did not alarm"
   pass "secondmate supervision: stale beacon with an in-flight child alarms"
+}
+
+test_supervision_alarm_is_suppressed_until_evidence_changes() {
+  local paths parent home
+  paths=$(make_fixture supervision-suppression 'working: active' 1); parent=${paths%%:*}; home=${paths#*:}
+  activate_fixture "$parent"
+  touch -t 202001010000 "$home/state/.last-watcher-beat"
+  run_probe
+  run_probe
+  [ "$(wc -l < "$parent/wakes")" -eq 1 ] || fail "stale supervision alarm re-armed without new evidence"
+  printf 'working: new child event\n' >> "$home/state/child.status"
+  run_probe
+  [ "$(wc -l < "$parent/wakes")" -eq 2 ] || fail "new child evidence did not re-arm supervision alarm"
+  pass "secondmate supervision: stale-home alarms are bounded until evidence changes"
+}
+
+test_supervision_suppression_write_failure_does_not_enqueue_alarm() {
+  local paths parent home errors
+  paths=$(make_fixture supervision-suppression-write-failure 'working: active' 1); parent=${paths%%:*}; home=${paths#*:}
+  activate_fixture "$parent"
+  touch -t 202001010000 "$home/state/.last-watcher-beat"
+  secondmate_supervision_suppression_write() { return 1; }
+  errors="$parent/errors"
+  secondmate_supervision_scan >/dev/null 2>"$errors" || true
+  [ ! -s "$parent/wakes" ] || fail "suppression write failure queued a supervision alarm"
+  assert_contains "$(cat "$errors")" 'error: could not persist secondmate supervision suppression for mate' "suppression write failure was not surfaced"
+  . "$ROOT/bin/fm-classify-lib.sh"
+  pass "secondmate supervision: suppression persistence failure does not enqueue an alarm"
 }
 
 test_stale_beacon_without_awaiting_children_is_silent() {
@@ -218,6 +247,8 @@ test_deadline_write_failure_does_not_enqueue_alarm() {
 test_invalid_deadline_setting_falls_back_to_default
 test_fresh_beacon_with_inflight_child_is_silent
 test_stale_beacon_with_inflight_child_alarms
+test_supervision_alarm_is_suppressed_until_evidence_changes
+test_supervision_suppression_write_failure_does_not_enqueue_alarm
 test_stale_beacon_without_awaiting_children_is_silent
 test_finished_child_with_stale_parent_alarms
 test_any_new_child_event_with_stale_parent_alarms

@@ -143,10 +143,23 @@ status_file_signature() {  # <status-file>
   cksum "$f" 2>/dev/null | awk '{print $1 ":" $2}'
 }
 
+secondmate_state_write() {  # <file> <contents>
+  local file=$1 contents=$2 tmp
+  [ ! -d "$file" ] || return 1
+  tmp="${file}.tmp.$$"
+  if printf '%s\n' "$contents" > "$tmp" && mv -f "$tmp" "$file"; then
+    return 0
+  fi
+  rm -f "$tmp"
+  return 1
+}
+
 secondmate_deadline_write() {  # <deadline-file> <expiry> <status-signature>
-  local deadline=$1 expiry=$2 signature=$3 tmp
-  tmp="${deadline}.tmp.$$"
-  printf '%s %s\n' "$expiry" "$signature" > "$tmp" && mv -f "$tmp" "$deadline"
+  secondmate_state_write "$1" "$2 $3"
+}
+
+secondmate_supervision_suppression_write() {  # <file> <evidence>
+  secondmate_state_write "$1" "$2"
 }
 
 # --- durable keyed decisions ------------------------------------------------

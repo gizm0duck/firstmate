@@ -382,6 +382,22 @@ SH
   pass "fm-turnend-guard: an allowed stop resets Codex reassertions"
 }
 
+test_codex_reassertion_counter_write_failure_fails_open() {
+  local dir out status
+  dir=$(make_primary_dir "$TMP_ROOT/hook-codex-counter-write-failure")
+  : > "$dir/state/task1.meta"
+  cat > "$dir/bin/fm-harness.sh" <<'SH'
+#!/usr/bin/env bash
+printf 'codex\n'
+SH
+  chmod +x "$dir/bin/fm-harness.sh"
+  mkdir "$dir/state/.codex-turnend-reassertions"
+  out=$(run_hook "$dir" true); status=$?
+  expect_code 0 "$status" "Codex must fail open when it cannot persist the reassertion bound"
+  assert_contains "$out" 'WARNING: could not persist the Codex supervision reassertion counter' "counter persistence failure was not loud"
+  pass "fm-turnend-guard: unpersistable Codex reassertion counter fails open loudly"
+}
+
 # A secondmate's OWN home runs a primary firstmate session and must be guarded
 # exactly like the main primary. This was the guard's proven blind spot: the
 # .fm-secondmate-home marker used to early-exit here, so an overnight secondmate
@@ -959,6 +975,7 @@ test_hook_uses_state_override
 test_hook_loop_guard_allows_retry
 test_codex_hook_reasserts_after_a_returned_checkpoint
 test_codex_reassertion_counter_resets_when_stop_is_allowed
+test_codex_reassertion_counter_write_failure_fails_open
 test_hook_blocks_in_secondmate_own_home
 test_hook_silent_in_idle_secondmate_home
 test_hook_secondmate_loop_guard_allows_retry

@@ -194,31 +194,51 @@ triage_log() {
   fi
 }
 
+secondmate_child_is_awaiting() {  # <secondmate-home> <meta-file>
+  local home=$1 meta=$2 child_state child status status_file beat backend target label
+  child_state="$home/state"
+  [ -d "$child_state" ] || return 1
+  [ "$(fm_meta_get "$meta" kind)" = secondmate ] && return 1
+  child=$(basename "$meta" .meta)
+  status_file="$child_state/$child.status"
+  status=$(last_status_line "$status_file")
+  backend=$(fm_backend_of_meta "$meta")
+  target=$(fm_backend_target_of_meta "$meta")
+  label=$(fm_meta_get "$meta" label)
+  [ -n "$backend" ] && [ -n "$target" ] || return 1
+  fm_backend_target_exists "$backend" "$target" "$label" || return 1
+  if ! status_is_awaiting_wake "$status"; then
+    beat="$child_state/.last-watcher-beat"
+    if [ ! -e "$beat" ] || [ ! -e "$status_file" ] \
+      || [ "$(stat_mtime "$status_file")" -lt "$(stat_mtime "$beat")" ]; then
+      return 1
+    fi
+  fi
+  return 0
+}
+
 secondmate_child_awaiting_count() {  # <secondmate-home>
-  local home=$1 child_state meta child status status_file beat backend target label count=0
+  local home=$1 child_state meta count=0
   child_state="$home/state"
   [ -d "$child_state" ] || { printf '0'; return; }
   for meta in "$child_state"/*.meta; do
     [ -e "$meta" ] || continue
-    [ "$(fm_meta_get "$meta" kind)" = secondmate ] && continue
-    child=$(basename "$meta" .meta)
-    status_file="$child_state/$child.status"
-    status=$(last_status_line "$status_file")
-    backend=$(fm_backend_of_meta "$meta")
-    target=$(fm_backend_target_of_meta "$meta")
-    label=$(fm_meta_get "$meta" label)
-    [ -n "$backend" ] && [ -n "$target" ] || continue
-    fm_backend_target_exists "$backend" "$target" "$label" || continue
-    if ! status_is_awaiting_wake "$status"; then
-      beat="$child_state/.last-watcher-beat"
-      if [ ! -e "$beat" ] || [ ! -e "$status_file" ] \
-        || [ "$(stat_mtime "$status_file")" -lt "$(stat_mtime "$beat")" ]; then
-        continue
-      fi
-    fi
+    secondmate_child_is_awaiting "$home" "$meta" || continue
     count=$((count + 1))
   done
   printf '%s' "$count"
+}
+
+secondmate_supervision_evidence() {  # <secondmate-home>
+  local home=$1 child_state meta child
+  child_state="$home/state"
+  printf 'beacon:%s\n' "$(stat_mtime "$child_state/.last-watcher-beat")"
+  for meta in "$child_state"/*.meta; do
+    [ -e "$meta" ] || continue
+    secondmate_child_is_awaiting "$home" "$meta" || continue
+    child=$(basename "$meta" .meta)
+    printf '%s:%s\n' "$child" "$(status_file_signature "$child_state/$child.status")"
+  done
 }
 
 secondmate_beacon_stale() {  # <secondmate-home>
@@ -230,7 +250,7 @@ secondmate_beacon_stale() {  # <secondmate-home>
 }
 
 secondmate_supervision_scan() {
-  local meta mate home awaiting suspects fresh_awaiting
+  local meta mate home awaiting suspects fresh_awaiting suppression evidence reason
   suspects=''
   for meta in "$STATE"/*.meta; do
     [ -e "$meta" ] || continue
@@ -240,8 +260,11 @@ secondmate_supervision_scan() {
     [ -n "$home" ] || home=$(secondmate_registry_field "$DATA/secondmates.md" "$mate" home || true)
     [ -n "$home" ] && [ -d "$home/state" ] || continue
     awaiting=$(secondmate_child_awaiting_count "$home")
-    [ "$awaiting" -gt 0 ] || continue
-    secondmate_beacon_stale "$home" || continue
+    suppression="$STATE/.secondmate-supervision-$mate"
+    if [ "$awaiting" -le 0 ] || ! secondmate_beacon_stale "$home"; then
+      rm -f "$suppression"
+      continue
+    fi
     suspects="${suspects}${mate}"$'\t'"${home}"$'\n'
   done
   [ -n "$suspects" ] || return 1
@@ -251,8 +274,18 @@ secondmate_supervision_scan() {
     fresh_awaiting=$(secondmate_child_awaiting_count "$home")
     [ "$fresh_awaiting" -gt 0 ] || continue
     secondmate_beacon_stale "$home" || continue
+    suppression="$STATE/.secondmate-supervision-$mate"
+    evidence=$(secondmate_supervision_evidence "$home")
+    [ "$(cat "$suppression" 2>/dev/null || true)" = "$evidence" ] && continue
     reason="supervision: $mate has $fresh_awaiting child task(s) awaiting a wake but its own watcher beacon is stale - peek $mate and repair its supervision"
-    fm_wake_append supervision "$mate" "$reason" || exit 1
+    if ! secondmate_supervision_suppression_write "$suppression" "$evidence"; then
+      printf 'error: could not persist secondmate supervision suppression for %s\n' "$mate" >&2
+      return 1
+    fi
+    if ! fm_wake_append supervision "$mate" "$reason"; then
+      rm -f "$suppression"
+      exit 1
+    fi
     wake "$reason"
   done <<EOF
 $suspects

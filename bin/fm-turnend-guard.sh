@@ -80,6 +80,17 @@ clear_codex_reassertions() {
   rm -f "$CODEX_REASSERT_COUNTER"
 }
 
+write_codex_reassertions() {  # <count>
+  local count=$1 tmp
+  [ ! -d "$CODEX_REASSERT_COUNTER" ] || return 1
+  tmp="${CODEX_REASSERT_COUNTER}.tmp.$$"
+  if printf '%s\n' "$count" > "$tmp" && mv -f "$tmp" "$CODEX_REASSERT_COUNTER"; then
+    return 0
+  fi
+  rm -f "$tmp"
+  return 1
+}
+
 # --- the actual predicate ----------------------------------------------------
 # shellcheck source=bin/fm-wake-lib.sh
 . "$SCRIPT_DIR/fm-wake-lib.sh"
@@ -106,7 +117,10 @@ if [ "$HARNESS" = codex ] && [ "$STOP_HOOK_ACTIVE" = true ]; then
     echo 'WARNING: Codex supervision reassertion limit reached; allowing this stop without a live watcher lock.' >&2
     exit 0
   fi
-  printf '%s\n' "$((codex_reassertions + 1))" > "$CODEX_REASSERT_COUNTER"
+  if ! write_codex_reassertions "$((codex_reassertions + 1))"; then
+    echo 'WARNING: could not persist the Codex supervision reassertion counter; allowing this stop without a live watcher lock.' >&2
+    exit 0
+  fi
 fi
 
 afk=0

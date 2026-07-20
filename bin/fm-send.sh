@@ -262,8 +262,10 @@ else
     deadline_secs=${FM_SECONDMATE_DEADLINE_SECS:-900}
     case "$deadline_secs" in ''|*[!0-9]*|0) deadline_secs=900 ;; esac
     target_id=$(fm_send_id_from_meta "$TARGET_META")
-    secondmate_deadline_write "$STATE/.secondmate-deadline-$target_id" \
+    if ! secondmate_deadline_write "$STATE/.secondmate-deadline-$target_id" \
       "$(( $(date +%s) + deadline_secs ))" \
-      "$deadline_signature"
+      "$deadline_signature"; then
+      printf 'WARNING: message was sent to secondmate %s, but its completion deadline could not be persisted.\n' "$target_id" >&2
+    fi
   fi
 fi

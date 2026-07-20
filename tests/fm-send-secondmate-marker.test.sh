@@ -269,6 +269,22 @@ test_secondmate_deadline_uses_presend_status_signature() {
   pass "fm-send: secondmate deadline recognizes status written during dispatch as a response"
 }
 
+test_secondmate_deadline_write_failure_preserves_delivery_success() {
+  local dir fb log home out rc
+  dir="$TMP_ROOT/deadline-write-failure"; mkdir -p "$dir"
+  fb=$(make_stubs "$dir"); log="$dir/send.log"
+  home=$(setup_home deadline-write-failure)
+  fm_write_secondmate_meta "$home/state/domain.meta" "$home" "sess:fm-domain"
+  mkdir "$home/state/.secondmate-deadline-domain"
+  : > "$log"
+  out=$(env PATH="$fb:$PATH" \
+    FM_ROOT_OVERRIDE="$home" FM_HOME="$home" FM_SEND_LOG="$log" FM_SEND_SETTLE=0 \
+    "$SEND" domain "route this" 2>&1); rc=$?
+  expect_code 0 "$rc" "delivery must remain successful when deadline persistence fails"
+  assert_contains "$out" 'WARNING: message was sent to secondmate domain, but its completion deadline could not be persisted.' "deadline persistence failure was not surfaced after delivery"
+  pass "fm-send: deadline persistence failure does not misreport delivered work as unsent"
+}
+
 test_secondmate_target_is_marked
 test_exact_secondmate_task_id_is_marked
 test_crewmate_target_is_not_marked
@@ -279,3 +295,4 @@ test_marker_transformation_is_idempotent
 test_marked_send_preserves_trailing_newlines
 test_secondmate_send_arms_deadline
 test_secondmate_deadline_uses_presend_status_signature
+test_secondmate_deadline_write_failure_preserves_delivery_success
