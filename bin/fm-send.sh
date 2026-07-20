@@ -261,7 +261,8 @@ else
     deadline_secs=${FM_SECONDMATE_DEADLINE_SECS:-900}
     case "$deadline_secs" in ''|*[!0-9]*|0) deadline_secs=900 ;; esac
     target_id=$(fm_send_id_from_meta "$TARGET_META")
-    printf '%s %s\n' "$(( $(date +%s) + deadline_secs ))" \
-      "$(status_file_signature "$STATE/$target_id.status")" > "$STATE/.secondmate-deadline-$target_id"
+    secondmate_deadline_write "$STATE/.secondmate-deadline-$target_id" \
+      "$(( $(date +%s) + deadline_secs ))" \
+      "$(status_file_signature "$STATE/$target_id.status")"
   fi
 fi

@@ -28,10 +28,10 @@
 #
 # Loop-guard: never block twice in the same turn. Claude Code and codex Stop
 # payloads carry stop_hook_active=true when the CURRENT stop attempt was itself
-# already forced by an earlier block this turn; on that signal we always allow
-# the stop, whether or not watcher supervision actually got resumed. Passive
-# harness adapters provide their own one-follow-up guard before calling this
-# script.
+# already forced by an earlier block this turn; passive harness adapters allow
+# the stop on that signal, while Codex reasserts until a live watcher lock exists.
+# Passive harness adapters provide their own one-follow-up guard before calling
+# this script.
 # That bounds this to at most one forced continuation per turn - never a wedged,
 # un-endable session - while still nagging again on a later turn if the problem
 # persists.

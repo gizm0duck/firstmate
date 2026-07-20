@@ -260,11 +260,6 @@ secondmate_deadline_scan() {
     deadline="$STATE/.secondmate-deadline-$mate"
     [ -e "$deadline" ] || continue
     status_file="$STATE/$mate.status"
-    status=$(last_status_line "$status_file")
-    if ! status_is_awaiting_wake "$status"; then
-      rm -f "$deadline"
-      continue
-    fi
     read -r expiry seen extra < "$deadline" || { rm -f "$deadline"; continue; }
     case "$expiry" in
       ''|*[!0-9]*) rm -f "$deadline"; continue ;;
@@ -272,12 +267,17 @@ secondmate_deadline_scan() {
     [ -z "$extra" ] || { rm -f "$deadline"; continue; }
     signature=$(status_file_signature "$status_file")
     if [ -z "$seen" ] || [ "$signature" != "$seen" ]; then
-      printf '%s %s\n' $((now + SECONDMATE_DEADLINE_SECS)) "$signature" > "$deadline"
+      status=$(last_status_line "$status_file")
+      if ! status_is_awaiting_wake "$status"; then
+        rm -f "$deadline"
+        continue
+      fi
+      secondmate_deadline_write "$deadline" "$((now + SECONDMATE_DEADLINE_SECS))" "$signature"
       continue
     fi
     [ "$now" -lt "$expiry" ] && continue
     reason="deadline: secondmate $mate acknowledged routed work but has not reported completion or a heartbeat - inspect $mate"
-    printf '%s %s\n' $((now + SECONDMATE_DEADLINE_SECS)) "$signature" > "$deadline"
+    secondmate_deadline_write "$deadline" "$((now + SECONDMATE_DEADLINE_SECS))" "$signature"
     fm_wake_append deadline "$mate" "$reason" || exit 1
     wake "$reason"
   done

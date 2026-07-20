@@ -132,6 +132,20 @@ test_deadline_arms_and_clears_on_terminal_status() {
   pass "secondmate supervision: routing deadline alarms and clears on terminal status"
 }
 
+test_deadline_does_not_clear_on_presend_terminal_status() {
+  local paths parent home deadline signature
+  paths=$(make_fixture presend-terminal 'working: accepted' 1); parent=${paths%%:*}; home=${paths#*:}
+  activate_fixture "$parent"
+  deadline="$parent/state/.secondmate-deadline-mate"
+  printf 'done: prior assignment complete\n' > "$parent/state/mate.status"
+  signature=$(status_file_signature "$parent/state/mate.status")
+  secondmate_deadline_write "$deadline" 1 "$signature"
+  secondmate_deadline_scan >/dev/null 2>&1 || true
+  assert_contains "$(cat "$parent/wakes")" 'deadline: secondmate mate' "pre-send terminal status silently cleared the routing deadline"
+  [ -e "$deadline" ] || fail "pre-send terminal status removed the routing deadline"
+  pass "secondmate supervision: prior terminal status does not clear a new deadline"
+}
+
 test_deadline_refreshes_on_status_activity() {
   local paths parent home deadline signature now expiry
   paths=$(make_fixture heartbeat 'working: accepted' 1); parent=${paths%%:*}; home=${paths#*:}
@@ -156,4 +170,5 @@ test_finished_child_with_stale_parent_alarms
 test_any_new_child_event_with_stale_parent_alarms
 test_parked_and_dead_children_are_silent
 test_deadline_arms_and_clears_on_terminal_status
+test_deadline_does_not_clear_on_presend_terminal_status
 test_deadline_refreshes_on_status_activity

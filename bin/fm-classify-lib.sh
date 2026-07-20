@@ -133,6 +133,12 @@ status_file_signature() {  # <status-file>
   cksum "$f" 2>/dev/null | awk '{print $1 ":" $2}'
 }
 
+secondmate_deadline_write() {  # <deadline-file> <expiry> <status-signature>
+  local deadline=$1 expiry=$2 signature=$3 tmp
+  tmp="${deadline}.tmp.$$"
+  printf '%s %s\n' "$expiry" "$signature" > "$tmp" && mv -f "$tmp" "$deadline"
+}
+
 # --- durable keyed decisions ------------------------------------------------
 #
 # The status stream is an append-only EVENT log. Reading it last-event-wins
