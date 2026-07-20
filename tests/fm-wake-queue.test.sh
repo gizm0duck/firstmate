@@ -234,6 +234,18 @@ test_drain_asserts_watcher_liveness() {
   pass "drain asserts watcher liveness: warns on a lapse, stays silent right after a fire"
 }
 
+test_drain_preserves_codex_reassertion_counter() {
+  local dir state
+  dir=$(make_case drain-codex-reassertion)
+  state="$dir/state"
+  : > "$state/task.meta"
+  printf '1\n' > "$state/.codex-turnend-reassertions"
+  append_wake "$state" signal task.status "signal: checkpoint returned" || fail "checkpoint wake append failed"
+  FM_STATE_OVERRIDE="$state" "$DRAIN" >/dev/null || fail "checkpoint wake drain failed"
+  [ "$(cat "$state/.codex-turnend-reassertions")" = 1 ] || fail "wake drain reset Codex reassertions without a healthy watcher"
+  pass "wake drain preserves Codex reassertions until supervision is proven healthy"
+}
+
 test_structural_signal_enrichment_preserves_raw_rows() {
   local dir state out expected actual annotation_count outside perl_bin
   dir=$(make_case enrichment)
@@ -437,6 +449,7 @@ test_check_output_is_queued
 test_atomic_double_drain
 test_drain_dedupes_obvious_duplicates
 test_drain_asserts_watcher_liveness
+test_drain_preserves_codex_reassertion_counter
 test_structural_signal_enrichment_preserves_raw_rows
 test_enrichment_caps_and_status_file_failures
 test_slow_annotation_does_not_block_append_and_deleted_file_fails_open

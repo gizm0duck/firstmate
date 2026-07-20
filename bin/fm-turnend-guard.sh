@@ -33,7 +33,7 @@
 # Passive harness adapters provide their own one-follow-up guard before calling
 # this script.
 # The Codex reassertion counter bounds the continuation sequence and fails open
-# after two reassertions, while still nagging again on a later stop episode.
+# after two reassertions until supervision is healthy or no work remains.
 set -u
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -96,17 +96,13 @@ fm_watcher_healthy "$STATE" "$WATCH" "$GRACE" "$FM_HOME" && { clear_codex_reasse
 # passive callbacks that cannot safely block recursively.
 HARNESS=$("$SCRIPT_DIR/fm-harness.sh" 2>/dev/null || true)
 if [ "$STOP_HOOK_ACTIVE" = true ] && [ "$HARNESS" != codex ]; then
-  clear_codex_reassertions
   exit 0
 fi
 
-if [ "$HARNESS" != codex ] || [ "$STOP_HOOK_ACTIVE" != true ]; then
-  clear_codex_reassertions
-else
+if [ "$HARNESS" = codex ] && [ "$STOP_HOOK_ACTIVE" = true ]; then
   codex_reassertions=$(cat "$CODEX_REASSERT_COUNTER" 2>/dev/null || printf '0')
   case "$codex_reassertions" in ''|*[!0-9]*) codex_reassertions=0 ;; esac
   if [ "$codex_reassertions" -ge 2 ]; then
-    clear_codex_reassertions
     echo 'WARNING: Codex supervision reassertion limit reached; allowing this stop without a live watcher lock.' >&2
     exit 0
   fi

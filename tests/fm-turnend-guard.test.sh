@@ -359,7 +359,7 @@ SH
   out=$(run_hook "$dir" true); status=$?
   expect_code 0 "$status" "Codex must fail open after two consecutive reassertions"
   assert_contains "$out" 'WARNING: Codex supervision reassertion limit reached' "Codex fail-open warning was not loud"
-  [ ! -e "$dir/state/.codex-turnend-reassertions" ] || fail "Codex fail-open did not reset its durable counter"
+  [ "$(cat "$dir/state/.codex-turnend-reassertions")" = 2 ] || fail "Codex fail-open did not preserve its durable counter until supervision recovers"
   pass "fm-turnend-guard: Codex reassertion is bounded and fails open"
 }
 

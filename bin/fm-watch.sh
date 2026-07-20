@@ -96,6 +96,7 @@ WATCHER_STALE_GRACE=${FM_WATCHER_STALE_GRACE:-${FM_GUARD_GRACE:-300}}
 SECONDMATE_SUPERVISION_GRACE=${FM_SECONDMATE_SUPERVISION_GRACE:-600}
 SECONDMATE_SUPERVISION_CONFIRM_SECS=${FM_SECONDMATE_SUPERVISION_CONFIRM_SECS:-5}
 SECONDMATE_DEADLINE_SECS=${FM_SECONDMATE_DEADLINE_SECS:-900}
+case "$SECONDMATE_DEADLINE_SECS" in ''|*[!0-9]*|0) SECONDMATE_DEADLINE_SECS=900 ;; esac
 # The singleton-lock acquisition, EXIT trap, and the blocking supervision loop
 # all live below the source guard at the very bottom of this file (see "Main
 # entry"). Sourcing this file for unit tests therefore loads the functions -

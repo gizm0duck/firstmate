@@ -48,6 +48,20 @@ activate_fixture() {  # <parent-home>
   FM_WAKE_LOG="$1/wakes"
 }
 
+test_invalid_deadline_setting_falls_back_to_default() {
+  local out status
+  out=$(ROOT="$ROOT" TMP_ROOT="$TMP_ROOT" FM_SECONDMATE_DEADLINE_SECS=oops bash -c '
+    export FM_HOME="$TMP_ROOT/invalid-deadline"
+    mkdir -p "$FM_HOME/state"
+    . "$ROOT/bin/fm-watch.sh"
+    [ "$SECONDMATE_DEADLINE_SECS" = 900 ]
+  ' 2>&1)
+  status=$?
+  expect_code 0 "$status" "invalid secondmate deadline setting must fall back before watcher arithmetic"
+  [ -z "$out" ] || fail "invalid secondmate deadline fallback printed output: $out"
+  pass "secondmate supervision: invalid deadline setting falls back to 900"
+}
+
 test_fresh_beacon_with_inflight_child_is_silent() {
   local paths parent home
   paths=$(make_fixture fresh 'working: active' 1); parent=${paths%%:*}; home=${paths#*:}
@@ -185,6 +199,7 @@ test_deadline_refreshes_on_status_activity() {
   pass "secondmate supervision: status activity refreshes the routing deadline"
 }
 
+test_invalid_deadline_setting_falls_back_to_default
 test_fresh_beacon_with_inflight_child_is_silent
 test_stale_beacon_with_inflight_child_alarms
 test_stale_beacon_without_awaiting_children_is_silent
