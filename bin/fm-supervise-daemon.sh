@@ -1153,10 +1153,7 @@ should_force_self() {  # <reason>
 # continue), so a singleton collision cannot hot-loop escalations.
 is_wake_reason() {  # <reason>
   local reason=$1
-  case "$reason" in
-    signal:*|stale:*|check:*|heartbeat|heartbeat:*) return 0 ;;
-  esac
-  return 1
+  actionable_wake_reason "$reason"
 }
 
 # --- dispatch one wake reason to self-handle or escalate --------------------
@@ -1175,6 +1172,7 @@ handle_wake() {  # <reason> <state>
               decision=$(classify_stale "$arg" "$state") ;;
     check:*)  decision=$(classify_check "$reason") ;;
     heartbeat|heartbeat:*) decision=$(classify_heartbeat) ;;
+    supervision:*|deadline:*) decision=$(classify_unknown "$reason") ;;
     *)        decision=$(classify_unknown "$reason") ;;
   esac
   action=${decision%%|*}

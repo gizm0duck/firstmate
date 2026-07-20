@@ -58,6 +58,8 @@ set -u
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=bin/fm-wake-lib.sh
 . "$SCRIPT_DIR/fm-wake-lib.sh"
+# shellcheck source=bin/fm-classify-lib.sh
+. "$SCRIPT_DIR/fm-classify-lib.sh"
 
 WATCH="$SCRIPT_DIR/fm-watch.sh"
 WATCH_LOCK="$STATE/.watch.lock"
@@ -295,17 +297,19 @@ trap 'handle_attached_signal INT 130' INT
 
 watch_output_has_wake() {
   local out=$1
-  grep -Eq '^(signal:|stale:|check:|heartbeat($|:))' "$out" 2>/dev/null
+  grep -Eq "$FM_ACTIONABLE_WAKE_RE" "$out" 2>/dev/null
 }
 
 watch_output_reason_type() {
   local out=$1 line
-  line=$(grep -E '^(signal:|stale:|check:|heartbeat($|:))' "$out" 2>/dev/null | head -1 || true)
+  line=$(grep -E "$FM_ACTIONABLE_WAKE_RE" "$out" 2>/dev/null | head -1 || true)
   case "$line" in
     signal:*) printf 'actionable-signal' ;;
     stale:*) printf 'actionable-stale' ;;
     check:*) printf 'actionable-check' ;;
     heartbeat*) printf 'actionable-heartbeat' ;;
+    supervision:*) printf 'actionable-supervision' ;;
+    deadline:*) printf 'actionable-deadline' ;;
     *) printf 'none' ;;
   esac
 }

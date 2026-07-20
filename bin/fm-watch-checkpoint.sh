@@ -4,6 +4,8 @@
 set -u
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=bin/fm-classify-lib.sh
+. "$SCRIPT_DIR/fm-classify-lib.sh"
 SECONDS_ARG=${FM_CODEX_WATCH_CHECKPOINT:-180}
 
 usage() {
@@ -86,7 +88,7 @@ else
 fi
 set -e
 
-if grep -E '^(signal:|stale:|check:|heartbeat($|:)|supervision:|deadline:)' "$OUT" >/dev/null 2>&1; then
+if grep -Eq "$FM_ACTIONABLE_WAKE_RE" "$OUT" 2>/dev/null; then
   cat "$OUT"
   [ ! -s "$ERR" ] || cat "$ERR" >&2
   exit 0

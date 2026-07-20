@@ -603,6 +603,8 @@ test_is_wake_reason_distinguishes_status_stdout() {
   is_wake_reason "stale: s:fm-x" || fail "stale: not recognized as wake"
   is_wake_reason "check: /s/c.sh: merged" || fail "check: not recognized as wake"
   is_wake_reason "heartbeat" || fail "heartbeat not recognized as wake"
+  is_wake_reason "supervision: mate stalled" || fail "supervision: not recognized as wake"
+  is_wake_reason "deadline: mate silent" || fail "deadline: not recognized as wake"
   is_wake_reason "watcher: already running" && fail "singleton status line misclassified as wake"
   is_wake_reason "watcher: already running pid 123" && fail "singleton status (pid) misclassified as wake"
   pass "is_wake_reason distinguishes watcher wake reasons from singleton-status stdout"

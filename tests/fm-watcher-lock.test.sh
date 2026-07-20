@@ -707,6 +707,15 @@ SH
   pass "arm propagates an immediate watcher wake before confirmation"
 }
 
+test_arm_recognizes_secondmate_supervision_wakes() {
+  local out="$TMP_ROOT/arm-secondmate-wakes.out"
+  printf 'supervision: mate stalled\n' > "$out"
+  watch_output_has_wake "$out" || fail "arm ignored supervision wake"
+  printf 'deadline: mate silent\n' > "$out"
+  watch_output_has_wake "$out" || fail "arm ignored deadline wake"
+  pass "arm recognizes supervision and deadline watcher wakes"
+}
+
 test_arm_waits_for_peer_beacon_after_child_stands_down() {
   local dir state fakebin armout peer identity armpid status i
   dir=$(make_case arm-peer-startup-race)
@@ -931,6 +940,7 @@ test_attached_arm_signal_is_recorded_in_cycle_ledger
 test_arm_starts_and_self_heals
 test_arm_hup_cleans_child_and_temp_output
 test_arm_propagates_immediate_wake_before_confirmation
+test_arm_recognizes_secondmate_supervision_wakes
 test_arm_waits_for_peer_beacon_after_child_stands_down
 test_arm_fails_loud_when_no_fresh_watcher_confirmable
 test_cycle_exit_ledger_links_successor_and_stays_bounded

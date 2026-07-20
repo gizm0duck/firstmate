@@ -67,6 +67,15 @@ FM_PAUSE_RESURFACE_SECS_DEFAULT=3600
 FM_CLASSIFY_RESOLVE_VERB_DEFAULT='resolved'
 FM_CLASSIFY_CAPTAIN_HELD_VERB_DEFAULT='captain-held'
 
+# One owner for watcher stdout lines that represent actionable wake reasons.
+# Consumers include the foreground checkpoint, background arm wrapper, and
+# away-mode daemon; singleton/status diagnostics deliberately do not match.
+FM_ACTIONABLE_WAKE_RE='^(signal:|stale:|check:|heartbeat($|:)|supervision:|deadline:)'
+
+actionable_wake_reason() {  # <watcher stdout line>
+  printf '%s\n' "$1" | grep -Eq "$FM_ACTIONABLE_WAKE_RE"
+}
+
 # Return the last non-blank line of a status file (empty if missing/blank).
 last_status_line() {
   local f=$1
