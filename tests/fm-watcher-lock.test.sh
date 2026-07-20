@@ -12,6 +12,8 @@ WATCH="$ROOT/bin/fm-watch.sh"
 WATCH_ARM="$ROOT/bin/fm-watch-arm.sh"
 DRAIN="$ROOT/bin/fm-wake-drain.sh"
 LIB="$ROOT/bin/fm-wake-lib.sh"
+# shellcheck source=bin/fm-classify-lib.sh
+. "$ROOT/bin/fm-classify-lib.sh"
 
 TMP_ROOT=$(fm_test_tmproot fm-watcher-lock-tests)
 
@@ -710,9 +712,9 @@ SH
 test_arm_recognizes_secondmate_supervision_wakes() {
   local out="$TMP_ROOT/arm-secondmate-wakes.out"
   printf 'supervision: mate stalled\n' > "$out"
-  watch_output_has_wake "$out" || fail "arm ignored supervision wake"
+  actionable_wake_reason "$(cat "$out")" || fail "arm ignored supervision wake"
   printf 'deadline: mate silent\n' > "$out"
-  watch_output_has_wake "$out" || fail "arm ignored deadline wake"
+  actionable_wake_reason "$(cat "$out")" || fail "arm ignored deadline wake"
   pass "arm recognizes supervision and deadline watcher wakes"
 }
 
