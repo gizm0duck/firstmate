@@ -88,14 +88,28 @@ test_finished_child_with_stale_parent_alarms() {
   pass "secondmate supervision: a completion after the stale beacon alarms"
 }
 
+test_any_new_child_event_with_stale_parent_alarms() {
+  local status paths parent home
+  for status in 'blocked: waiting for a fix' 'needs-decision: choose an option' 'failed: command failed' 'paused: upstream wait'; do
+    paths=$(make_fixture "event-${status%%:*}" "$status" 1); parent=${paths%%:*}; home=${paths#*:}
+    activate_fixture "$parent"
+    touch -t 202501010101 "$home/state/.last-watcher-beat"
+    touch -t 202501010101 "$home/state/child.status"
+    run_probe
+    assert_contains "$(cat "$parent/wakes")" 'supervision: mate has 1 child task(s) awaiting a wake' "new $status event did not alarm a stale parent"
+  done
+  pass "secondmate supervision: any event at or after the stale beacon alarms"
+}
+
 test_parked_and_dead_children_are_silent() {
   local paths parent home
   paths=$(make_fixture parked 'needs-decision: captain input' 1); parent=${paths%%:*}; home=${paths#*:}
   activate_fixture "$parent"
+  touch -t 201901010000 "$home/state/child.status"
   touch -t 202001010000 "$home/state/.last-watcher-beat"
   run_probe
   [ ! -s "$parent/wakes" ] || fail "parked needs-decision child incorrectly alarmed"
-  paths=$(make_fixture dead '' 0); parent=${paths%%:*}; home=${paths#*:}
+  paths=$(make_fixture dead 'blocked: stale dead endpoint' 0); parent=${paths%%:*}; home=${paths#*:}
   activate_fixture "$parent"
   touch -t 202001010000 "$home/state/.last-watcher-beat"
   run_probe
@@ -104,11 +118,12 @@ test_parked_and_dead_children_are_silent() {
 }
 
 test_deadline_arms_and_clears_on_terminal_status() {
-  local paths parent home deadline
+  local paths parent home deadline signature
   paths=$(make_fixture deadline 'working: accepted' 1); parent=${paths%%:*}; home=${paths#*:}
   activate_fixture "$parent"
   deadline="$parent/state/.secondmate-deadline-mate"
-  printf '1\n' > "$deadline"
+  signature=$(status_file_signature "$parent/state/mate.status")
+  printf '1 %s\n' "$signature" > "$deadline"
   secondmate_deadline_scan >/dev/null 2>&1 || true
   assert_contains "$(cat "$parent/wakes")" 'deadline: secondmate mate' "expired routing deadline did not alarm"
   printf 'done: routed work complete\n' > "$parent/state/mate.status"
@@ -117,9 +132,28 @@ test_deadline_arms_and_clears_on_terminal_status() {
   pass "secondmate supervision: routing deadline alarms and clears on terminal status"
 }
 
+test_deadline_refreshes_on_status_activity() {
+  local paths parent home deadline signature now expiry
+  paths=$(make_fixture heartbeat 'working: accepted' 1); parent=${paths%%:*}; home=${paths#*:}
+  activate_fixture "$parent"
+  deadline="$parent/state/.secondmate-deadline-mate"
+  printf 'working: acknowledged\n' > "$parent/state/mate.status"
+  signature=$(status_file_signature "$parent/state/mate.status")
+  printf '1 %s\n' "$signature" > "$deadline"
+  printf 'working: still progressing\n' >> "$parent/state/mate.status"
+  now=$(date +%s)
+  secondmate_deadline_scan >/dev/null 2>&1 || true
+  [ ! -s "$parent/wakes" ] || fail "status activity incorrectly raised a deadline alarm"
+  read -r expiry signature < "$deadline"
+  [ "$expiry" -ge $((now + 1)) ] || fail "status activity did not refresh the routing deadline"
+  pass "secondmate supervision: status activity refreshes the routing deadline"
+}
+
 test_fresh_beacon_with_inflight_child_is_silent
 test_stale_beacon_with_inflight_child_alarms
 test_stale_beacon_without_awaiting_children_is_silent
 test_finished_child_with_stale_parent_alarms
+test_any_new_child_event_with_stale_parent_alarms
 test_parked_and_dead_children_are_silent
 test_deadline_arms_and_clears_on_terminal_status
+test_deadline_refreshes_on_status_activity

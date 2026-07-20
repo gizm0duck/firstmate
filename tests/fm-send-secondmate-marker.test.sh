@@ -240,7 +240,7 @@ test_secondmate_send_arms_deadline() {
   now=$(date +%s)
   FM_SECONDMATE_DEADLINE_SECS=60 run_send "$fb" "$home" "$log" domain "route this"; rc=$?
   expect_code 0 "$rc" "secondmate send should arm its completion deadline"
-  deadline=$(cat "$home/state/.secondmate-deadline-domain")
+  read -r deadline _ < "$home/state/.secondmate-deadline-domain"
   [ "$deadline" -ge $((now + 55)) ] || fail "secondmate deadline was not armed from successful send: $deadline"
   pass "fm-send: successful secondmate routing arms a durable completion deadline"
 }

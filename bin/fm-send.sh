@@ -63,6 +63,8 @@ fi
 . "$SCRIPT_DIR/fm-backend.sh"
 # shellcheck source=bin/fm-marker-lib.sh
 . "$SCRIPT_DIR/fm-marker-lib.sh"
+# shellcheck source=bin/fm-classify-lib.sh
+. "$SCRIPT_DIR/fm-classify-lib.sh"
 
 FM_GUARD_CONTINUE_LINE='This is a supervision warning only; the requested message WILL still be sent.' "$SCRIPT_DIR/fm-guard.sh" || true
 
@@ -259,6 +261,7 @@ else
     deadline_secs=${FM_SECONDMATE_DEADLINE_SECS:-900}
     case "$deadline_secs" in ''|*[!0-9]*|0) deadline_secs=900 ;; esac
     target_id=$(fm_send_id_from_meta "$TARGET_META")
-    printf '%s\n' "$(( $(date +%s) + deadline_secs ))" > "$STATE/.secondmate-deadline-$target_id"
+    printf '%s %s\n' "$(( $(date +%s) + deadline_secs ))" \
+      "$(status_file_signature "$STATE/$target_id.status")" > "$STATE/.secondmate-deadline-$target_id"
   fi
 fi

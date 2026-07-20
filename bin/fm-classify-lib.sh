@@ -127,6 +127,12 @@ status_is_awaiting_wake() {  # <status-line>
   esac
 }
 
+status_file_signature() {  # <status-file>
+  local f=$1
+  [ -f "$f" ] || { printf '%s' '-'; return; }
+  cksum "$f" 2>/dev/null | awk '{print $1 ":" $2}'
+}
+
 # --- durable keyed decisions ------------------------------------------------
 #
 # The status stream is an append-only EVENT log. Reading it last-event-wins

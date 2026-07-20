@@ -195,21 +195,18 @@ secondmate_child_awaiting_count() {  # <secondmate-home>
     child=$(basename "$meta" .meta)
     status_file="$child_state/$child.status"
     status=$(last_status_line "$status_file")
-    if ! status_is_awaiting_wake "$status"; then
-      # A completed child is normally settled and must not keep an idle mate
-      # alarming forever. But a done event written AFTER the mate's last beacon
-      # is precisely the stranded completion this probe exists to surface.
-      beat="$child_state/.last-watcher-beat"
-      if [ "$(status_line_verb "$status")" != done ] || [ ! -e "$beat" ] \
-        || [ "$(stat_mtime "$status_file")" -le "$(stat_mtime "$beat")" ]; then
-        continue
-      fi
-    fi
     backend=$(fm_backend_of_meta "$meta")
     target=$(fm_backend_target_of_meta "$meta")
     label=$(fm_meta_get "$meta" label)
     [ -n "$backend" ] && [ -n "$target" ] || continue
     fm_backend_target_exists "$backend" "$target" "$label" || continue
+    if ! status_is_awaiting_wake "$status"; then
+      beat="$child_state/.last-watcher-beat"
+      if [ ! -e "$beat" ] || [ ! -e "$status_file" ] \
+        || [ "$(stat_mtime "$status_file")" -lt "$(stat_mtime "$beat")" ]; then
+        continue
+      fi
+    fi
     count=$((count + 1))
   done
   printf '%s' "$count"
@@ -254,7 +251,7 @@ EOF
 }
 
 secondmate_deadline_scan() {
-  local meta mate deadline status now reason
+  local meta mate deadline status status_file signature now reason expiry seen extra
   now=$(date +%s)
   for meta in "$STATE"/*.meta; do
     [ -e "$meta" ] || continue
@@ -262,17 +259,25 @@ secondmate_deadline_scan() {
     mate=$(basename "$meta" .meta)
     deadline="$STATE/.secondmate-deadline-$mate"
     [ -e "$deadline" ] || continue
-    status=$(last_status_line "$STATE/$mate.status")
+    status_file="$STATE/$mate.status"
+    status=$(last_status_line "$status_file")
     if ! status_is_awaiting_wake "$status"; then
       rm -f "$deadline"
       continue
     fi
-    case "$(cat "$deadline" 2>/dev/null || true)" in
+    read -r expiry seen extra < "$deadline" || { rm -f "$deadline"; continue; }
+    case "$expiry" in
       ''|*[!0-9]*) rm -f "$deadline"; continue ;;
     esac
-    [ "$now" -lt "$(cat "$deadline")" ] && continue
+    [ -z "$extra" ] || { rm -f "$deadline"; continue; }
+    signature=$(status_file_signature "$status_file")
+    if [ -z "$seen" ] || [ "$signature" != "$seen" ]; then
+      printf '%s %s\n' $((now + SECONDMATE_DEADLINE_SECS)) "$signature" > "$deadline"
+      continue
+    fi
+    [ "$now" -lt "$expiry" ] && continue
     reason="deadline: secondmate $mate acknowledged routed work but has not reported completion or a heartbeat - inspect $mate"
-    printf '%s\n' $((now + SECONDMATE_DEADLINE_SECS)) > "$deadline"
+    printf '%s %s\n' $((now + SECONDMATE_DEADLINE_SECS)) "$signature" > "$deadline"
     fm_wake_append deadline "$mate" "$reason" || exit 1
     wake "$reason"
   done
