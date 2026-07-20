@@ -354,7 +354,32 @@ SH
   out=$(run_hook "$dir" true); status=$?
   expect_code 2 "$status" "Codex must not accept stop_hook_active without a live watcher"
   assert_contains "$out" 'TURN WOULD END BLIND' "Codex reassertion omitted the blind-turn alarm"
-  pass "fm-turnend-guard: Codex reasserts after a returned checkpoint until a watcher is live"
+  out=$(run_hook "$dir" true); status=$?
+  expect_code 2 "$status" "Codex must permit its second bounded reassertion"
+  out=$(run_hook "$dir" true); status=$?
+  expect_code 0 "$status" "Codex must fail open after two consecutive reassertions"
+  assert_contains "$out" 'WARNING: Codex supervision reassertion limit reached' "Codex fail-open warning was not loud"
+  [ ! -e "$dir/state/.codex-turnend-reassertions" ] || fail "Codex fail-open did not reset its durable counter"
+  pass "fm-turnend-guard: Codex reassertion is bounded and fails open"
+}
+
+test_codex_reassertion_counter_resets_when_stop_is_allowed() {
+  local dir out status
+  dir=$(make_primary_dir "$TMP_ROOT/hook-codex-reset")
+  : > "$dir/state/task1.meta"
+  cat > "$dir/bin/fm-harness.sh" <<'SH'
+#!/usr/bin/env bash
+printf 'codex\n'
+SH
+  chmod +x "$dir/bin/fm-harness.sh"
+  out=$(run_hook "$dir" true); status=$?
+  expect_code 2 "$status" "Codex must record its first reassertion"
+  [ -e "$dir/state/.codex-turnend-reassertions" ] || fail "Codex did not persist its reassertion counter"
+  rm -f "$dir/state/task1.meta"
+  out=$(run_hook "$dir" true); status=$?
+  expect_code 0 "$status" "an allowed stop must remain allowed"
+  [ ! -e "$dir/state/.codex-turnend-reassertions" ] || fail "an allowed stop did not reset the Codex counter"
+  pass "fm-turnend-guard: an allowed stop resets Codex reassertions"
 }
 
 # A secondmate's OWN home runs a primary firstmate session and must be guarded
@@ -933,6 +958,7 @@ test_hook_ignores_repo_state_when_fm_home_set
 test_hook_uses_state_override
 test_hook_loop_guard_allows_retry
 test_codex_hook_reasserts_after_a_returned_checkpoint
+test_codex_reassertion_counter_resets_when_stop_is_allowed
 test_hook_blocks_in_secondmate_own_home
 test_hook_silent_in_idle_secondmate_home
 test_hook_secondmate_loop_guard_allows_retry

@@ -45,6 +45,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FM_ROOT="${FM_ROOT_OVERRIDE:-$(cd "$SCRIPT_DIR/.." && pwd)}"
 FM_HOME="${FM_HOME:-${FM_ROOT_OVERRIDE:-$FM_ROOT}}"
 STATE="${FM_STATE_OVERRIDE:-$FM_HOME/state}"
+DATA="${FM_DATA_OVERRIDE:-$FM_HOME/data}"
 mkdir -p "$STATE"
 
 # shellcheck source=bin/fm-wake-lib.sh
@@ -54,6 +55,8 @@ mkdir -p "$STATE"
 # has one definition.
 # shellcheck source=bin/fm-classify-lib.sh
 . "$SCRIPT_DIR/fm-classify-lib.sh"
+# shellcheck source=bin/fm-ff-lib.sh
+. "$SCRIPT_DIR/fm-ff-lib.sh"
 # The DEFAULT EVENT SOURCE: this watcher's poll loop over the pull primitives
 # (capture, recorded windows, backend busy-state, and the BUSY_REGEX fallback)
 # synthesizes the signal/stale/check/heartbeat wake vocabulary for backends with
@@ -226,12 +229,13 @@ secondmate_supervision_scan() {
   for meta in "$STATE"/*.meta; do
     [ -e "$meta" ] || continue
     [ "$(fm_meta_get "$meta" kind)" = secondmate ] || continue
+    mate=$(basename "$meta" .meta)
     home=$(fm_meta_get "$meta" home)
+    [ -n "$home" ] || home=$(secondmate_registry_field "$DATA/secondmates.md" "$mate" home || true)
     [ -n "$home" ] && [ -d "$home/state" ] || continue
     awaiting=$(secondmate_child_awaiting_count "$home")
     [ "$awaiting" -gt 0 ] || continue
     secondmate_beacon_stale "$home" || continue
-    mate=$(basename "$meta" .meta)
     suspects="${suspects}${mate}"$'\t'"${home}"$'\n'
   done
   [ -n "$suspects" ] || return 1

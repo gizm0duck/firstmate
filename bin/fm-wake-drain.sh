@@ -71,6 +71,7 @@ rm -f "$DRAIN_TMP" || exit "$?"
 DRAIN_TMP=
 fm_lock_release "$FM_WAKE_QUEUE_LOCK"
 DRAIN_LOCK_HELD=false
+rm -f "$STATE/.codex-turnend-reassertions"
 
 # Raw output and queue deletion are authoritative. Everything below is
 # best-effort and cannot restore, duplicate, hide, or fail the consumed rows.

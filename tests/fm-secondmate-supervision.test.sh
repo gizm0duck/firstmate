@@ -43,6 +43,8 @@ run_probe() {
 
 activate_fixture() {  # <parent-home>
   STATE="$1/state"
+  FM_HOME=$1
+  DATA="$FM_HOME/data"
   FM_WAKE_LOG="$1/wakes"
 }
 
@@ -109,12 +111,32 @@ test_parked_and_dead_children_are_silent() {
   touch -t 202001010000 "$home/state/.last-watcher-beat"
   run_probe
   [ ! -s "$parent/wakes" ] || fail "parked needs-decision child incorrectly alarmed"
+  paths=$(make_fixture held 'captain-held: awaiting captain response' 1); parent=${paths%%:*}; home=${paths#*:}
+  activate_fixture "$parent"
+  touch -t 201901010000 "$home/state/child.status"
+  touch -t 202001010000 "$home/state/.last-watcher-beat"
+  run_probe
+  [ ! -s "$parent/wakes" ] || fail "captain-held child incorrectly alarmed"
   paths=$(make_fixture dead 'blocked: stale dead endpoint' 0); parent=${paths%%:*}; home=${paths#*:}
   activate_fixture "$parent"
   touch -t 202001010000 "$home/state/.last-watcher-beat"
   run_probe
   [ ! -s "$parent/wakes" ] || fail "dead leftover child incorrectly alarmed"
   pass "secondmate supervision: parked and dead leftover children are silent"
+}
+
+test_legacy_secondmate_home_backfill_alarms() {
+  local paths parent home
+  paths=$(make_fixture legacy 'working: active' 1); parent=${paths%%:*}; home=${paths#*:}
+  sed -i.bak '/^home=/d' "$parent/state/mate.meta"
+  rm -f "$parent/state/mate.meta.bak"
+  mkdir -p "$parent/data"
+  printf '%s\n' "- mate - fixture (home: $home; scope: fixture; projects: sample; added 2026-07-20)" > "$parent/data/secondmates.md"
+  activate_fixture "$parent"
+  touch -t 202001010000 "$home/state/.last-watcher-beat"
+  run_probe
+  assert_contains "$(cat "$parent/wakes")" 'supervision: mate has 1 child task(s) awaiting a wake' "registry-backed secondmate home did not alarm"
+  pass "secondmate supervision: legacy home metadata backfills from the registry"
 }
 
 test_deadline_arms_and_clears_on_terminal_status() {
@@ -169,6 +191,7 @@ test_stale_beacon_without_awaiting_children_is_silent
 test_finished_child_with_stale_parent_alarms
 test_any_new_child_event_with_stale_parent_alarms
 test_parked_and_dead_children_are_silent
+test_legacy_secondmate_home_backfill_alarms
 test_deadline_arms_and_clears_on_terminal_status
 test_deadline_does_not_clear_on_presend_terminal_status
 test_deadline_refreshes_on_status_activity

@@ -119,10 +119,11 @@ status_is_paused_or_captain_held() {  # <status-line>
 # needs only to distinguish a potentially wake-producing live child from a child
 # that has already handed control back or is parked for a human decision.
 status_is_awaiting_wake() {  # <status-line>
-  local verb
-  verb=$(status_line_verb "$1")
+  local line=$1 verb
+  status_is_paused_or_captain_held "$line" && return 1
+  verb=$(status_line_verb "$line")
   case "$verb" in
-    done|failed|blocked|needs-decision|paused) return 1 ;;
+    done|failed|blocked|needs-decision) return 1 ;;
     *) return 0 ;;
   esac
 }

@@ -50,7 +50,8 @@ All verified primary harnesses have a tracked integration:
 
 Claude and Codex support a direct blocking Stop hook.
 For those harnesses, exit status 2 plus stderr from `bin/fm-turnend-guard.sh` blocks the stop and feeds the reason back into the model.
-Both payloads include `stop_hook_active`; when it is true, the shared guard exits 0 so the harness can end after one forced continuation, except that Codex reasserts exit 2 until a live watcher lock exists after a returned foreground checkpoint.
+Both payloads include `stop_hook_active`; when it is true, the shared guard exits 0 so the harness can end after one forced continuation, except that Codex reasserts at most twice until a live watcher lock exists after a returned foreground checkpoint.
+If the second Codex reassertion still has no lock, the guard clears its durable counter, warns loudly on stderr, and fails open; the parent home's secondmate-supervision probe is the deliberate backstop for that residual blind window.
 
 OpenCode, Pi, and Grok expose passive lifecycle callbacks for this purpose.
 Their adapters fail open at the hook boundary to avoid corrupting a user session, but they force one follow-up turn when the shared predicate blocks.
@@ -151,7 +152,7 @@ No Herdr command was issued and no fleet state was touched; the experiment wrote
 Codex `0.144.4` was exercised in a throwaway cloned project with an isolated temporary `FM_HOME`.
 Command run: `FM_CODEX_LIVE_E2E=1 tests/fm-codex-continuity-live-e2e.test.sh`.
 Exact output: `ok - codex-cli 0.144.4 live E2E preserved the one-second foreground checkpoint path`.
-The deterministic regression suite `tests/fm-turnend-guard.test.sh` proves that a returned Codex checkpoint with no live watcher lock causes a `stop_hook_active=true` Stop payload to exit 2 again.
+The deterministic regression suite `tests/fm-turnend-guard.test.sh` proves that a returned Codex checkpoint with no live watcher lock causes two `stop_hook_active=true` Stop payloads to exit 2 again before the bounded fail-open warning.
 The isolated live test proves only that Codex 0.144.4 runs one real foreground checkpoint in a temporary home.
 Pending verification: a multi-turn live loop with a long-running child has not been run from this seat.
 After merge, fleet-trial watcher-beacon telemetry must prove that the beacon remains fresh across multiple Codex turn ends while child work is in flight.

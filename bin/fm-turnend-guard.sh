@@ -29,12 +29,11 @@
 # Loop-guard: never block twice in the same turn. Claude Code and codex Stop
 # payloads carry stop_hook_active=true when the CURRENT stop attempt was itself
 # already forced by an earlier block this turn; passive harness adapters allow
-# the stop on that signal, while Codex reasserts until a live watcher lock exists.
+# the stop on that signal, while Codex may reassert twice before failing open.
 # Passive harness adapters provide their own one-follow-up guard before calling
 # this script.
-# That bounds this to at most one forced continuation per turn - never a wedged,
-# un-endable session - while still nagging again on a later turn if the problem
-# persists.
+# The Codex reassertion counter bounds the continuation sequence and fails open
+# after two reassertions, while still nagging again on a later stop episode.
 set -u
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -44,6 +43,7 @@ STATE="${FM_STATE_OVERRIDE:-$FM_HOME/state}"
 CONFIG="${FM_CONFIG_OVERRIDE:-$FM_HOME/config}"
 GRACE=${FM_GUARD_GRACE:-300}
 WATCH="$SCRIPT_DIR/fm-watch.sh"
+CODEX_REASSERT_COUNTER="$STATE/.codex-turnend-reassertions"
 
 # shellcheck source=bin/fm-supervision-lib.sh
 . "$SCRIPT_DIR/fm-supervision-lib.sh"
@@ -76,23 +76,41 @@ STOP_HOOK_ACTIVE=$(printf '%s' "$PAYLOAD" | jq -r '.stop_hook_active // false' 2
 # so this exempts them while guarding every real secondmate home.
 fm_primary_scope_matches "$FM_ROOT" "$STATE" || exit 0
 
+clear_codex_reassertions() {
+  rm -f "$CODEX_REASSERT_COUNTER"
+}
+
 # --- the actual predicate ----------------------------------------------------
 # shellcheck source=bin/fm-wake-lib.sh
 . "$SCRIPT_DIR/fm-wake-lib.sh"
 
 fm_supervision_status "$STATE" "$GRACE"
-[ "$FM_SUP_IN_FLIGHT" -gt 0 ] || exit 0
-fm_watcher_healthy "$STATE" "$WATCH" "$GRACE" "$FM_HOME" && exit 0
+[ "$FM_SUP_IN_FLIGHT" -gt 0 ] || { clear_codex_reassertions; exit 0; }
+fm_watcher_healthy "$STATE" "$WATCH" "$GRACE" "$FM_HOME" && { clear_codex_reassertions; exit 0; }
 
 # A bounded Codex checkpoint releases its foreground watcher lock before the
 # forced continuation ends. Its old stop_hook_active bypass therefore let that
-# continuation immediately end blind. Reassert the guard until a real watcher is
-# healthy; the fresh lock is the proof, not completion of one checkpoint.
+# continuation immediately end blind. Reassert up to the durable bound unless a
+# real watcher is healthy; the fresh lock is the proof, not one checkpoint.
 # Other harness adapters retain their one-follow-up loop guard because they use
 # passive callbacks that cannot safely block recursively.
 HARNESS=$("$SCRIPT_DIR/fm-harness.sh" 2>/dev/null || true)
 if [ "$STOP_HOOK_ACTIVE" = true ] && [ "$HARNESS" != codex ]; then
+  clear_codex_reassertions
   exit 0
+fi
+
+if [ "$HARNESS" != codex ] || [ "$STOP_HOOK_ACTIVE" != true ]; then
+  clear_codex_reassertions
+else
+  codex_reassertions=$(cat "$CODEX_REASSERT_COUNTER" 2>/dev/null || printf '0')
+  case "$codex_reassertions" in ''|*[!0-9]*) codex_reassertions=0 ;; esac
+  if [ "$codex_reassertions" -ge 2 ]; then
+    clear_codex_reassertions
+    echo 'WARNING: Codex supervision reassertion limit reached; allowing this stop without a live watcher lock.' >&2
+    exit 0
+  fi
+  printf '%s\n' "$((codex_reassertions + 1))" > "$CODEX_REASSERT_COUNTER"
 fi
 
 afk=0
