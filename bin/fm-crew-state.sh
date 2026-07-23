@@ -352,7 +352,7 @@ emit_stall_snapshot() {  # <run-state> <run-status>
     gate_status=$(nm_gate_status)
     [ -n "$gate" ] || gate=$run_status
     [ -n "$gate" ] || gate=gate
-    case "$gate_status" in awaiting_approval|fix_review) ;; *) gate_status=${run_status:-awaiting_approval} ;; esac
+    case "$gate_status" in awaiting_approval|fix_review) ;; *) gate_status=awaiting_approval ;; esac
     printf '%s\t%s\t%s\t%s\n' "$run_id" "$gate" "$gate_status" "$(nm_awaiting_seconds)"
     exit 0
   fi
