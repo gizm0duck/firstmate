@@ -126,7 +126,13 @@ EOF
     running|fixing) threshold=${FM_NM_STALL_ACTIVE_SECS:-$FM_NM_STALL_ACTIVE_SECS_DEFAULT} ;;
     *) return 0 ;;
   esac
-  case "$threshold" in ''|*[!0-9]*) threshold=$FM_NM_STALL_ACTIVE_SECS_DEFAULT ;; esac
+  case "$threshold" in
+    ''|*[!0-9]*)
+      if [ "$is_gate" = 1 ]; then threshold=$FM_NM_STALL_PARKED_SECS_DEFAULT
+      else threshold=$FM_NM_STALL_ACTIVE_SECS_DEFAULT
+      fi
+      ;;
+  esac
   marker="$state/.nm-stall-$task"
   old_snapshot=$(sed -n '1p' "$marker" 2>/dev/null || true)
   old_sig=$(sed -n '2p' "$marker" 2>/dev/null || true)

@@ -61,6 +61,20 @@ test_parked_gate_stall() {
   pass "no-mistakes stall detector: parked gate wakes from its reported age"
 }
 
+test_invalid_parked_threshold_uses_parked_default() {
+  local dir out
+  dir=$(new_case invalid-parked-threshold)
+  FM_FAKE_SNAPSHOT=$'run-invalid-parked\treview\tawaiting_approval\t481'
+  export FM_FAKE_SNAPSHOT
+  FM_NM_STALL_PARKED_SECS=invalid nm_stall_check_task task "$dir/state"
+  out=$NM_STALL_DETAIL
+  case "$out" in
+    *"run run-invalid-parked step review task task"*) : ;;
+    *) fail "invalid parked threshold did not fall back to the eight-minute default: $out" ;;
+  esac
+  pass "no-mistakes stall detector: invalid parked threshold uses parked default"
+}
+
 test_parked_gate_ignores_status_writes() {
   local dir out
   dir=$(new_case parked-status-write)
@@ -157,6 +171,7 @@ test_alert_is_committed_after_queue_success() {
 
 test_active_step_stall
 test_parked_gate_stall
+test_invalid_parked_threshold_uses_parked_default
 test_parked_gate_ignores_status_writes
 test_silent_advance
 test_healthy_active_run
