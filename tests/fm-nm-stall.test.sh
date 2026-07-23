@@ -53,19 +53,31 @@ test_active_step_stall() {
 test_parked_gate_stall() {
   local dir out
   dir=$(new_case parked)
-  touch -t 202001010000 "$dir/state/task.status"
   FM_FAKE_SNAPSHOT=$'run-parked\treview\tawaiting_approval\t481'
   export FM_FAKE_SNAPSHOT
   FM_NM_STALL_PARKED_SECS=480 nm_stall_check_task task "$dir/state"
   out=$NM_STALL_DETAIL
-  [ -z "$out" ] || fail "the first parked observation must establish a baseline"
+  case "$out" in
+    *"run run-parked step review task task"*) : ;;
+    *) fail "parked awaiting-approval gate did not trip from its reported age: $out" ;;
+  esac
+  pass "no-mistakes stall detector: parked gate wakes from its reported age"
+}
+
+test_parked_gate_ignores_status_writes() {
+  local dir out
+  dir=$(new_case parked-status-write)
+  FM_FAKE_SNAPSHOT=$'run-parked-status\treview\tfix_review\t481'
+  export FM_FAKE_SNAPSHOT
+  FM_NM_STALL_PARKED_SECS=480 nm_stall_check_task task "$dir/state"
+  printf 'working: unrelated update\n' >> "$dir/state/task.status"
   FM_NM_STALL_PARKED_SECS=480 nm_stall_check_task task "$dir/state"
   out=$NM_STALL_DETAIL
   case "$out" in
-    *"run run-parked step review task task"*) : ;;
-    *) fail "parked awaiting-approval gate did not trip: $out" ;;
+    *"run run-parked-status step review task task"*) : ;;
+    *) fail "parked gate age was reset by a crew status write: $out" ;;
   esac
-  pass "no-mistakes stall detector: parked gate wakes after its shorter threshold"
+  pass "no-mistakes stall detector: parked gate ignores crew status writes"
 }
 
 test_silent_advance() {
@@ -148,6 +160,7 @@ test_alert_is_committed_after_queue_success() {
 
 test_active_step_stall
 test_parked_gate_stall
+test_parked_gate_ignores_status_writes
 test_silent_advance
 test_healthy_active_run
 test_elapsed_duration_is_not_a_silent_advance

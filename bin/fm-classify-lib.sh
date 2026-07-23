@@ -106,7 +106,7 @@ _fm_nm_stall_status_signature() {  # <status-file>
 # The marker lives in the supplied home's state directory, making the home that
 # owns state/<task>.meta the sole recipient even when code roots are shared.
 nm_stall_check_task() {  # <task-id> <state-dir>
-  local task=$1 state=$2 snapshot identity run_id step status duration threshold marker old_snapshot old_sig old_alerted old_seen sig now run_started status_mtime anchor age
+  local task=$1 state=$2 snapshot identity run_id step status duration threshold marker old_snapshot old_sig old_alerted old_seen sig now run_started status_mtime anchor age is_gate=0
   export NM_STALL_DETAIL=
   export NM_STALL_SNAPSHOT=
   export NM_STALL_SIG=
@@ -122,7 +122,7 @@ EOF
   identity=$(printf '%s\t%s\t%s' "$run_id" "$step" "$status")
   case "$duration" in ''|*[!0-9]*) duration=0 ;; esac
   case "$status" in
-    awaiting_approval|fix_review) threshold=${FM_NM_STALL_PARKED_SECS:-$FM_NM_STALL_PARKED_SECS_DEFAULT} ;;
+    awaiting_approval|fix_review) threshold=${FM_NM_STALL_PARKED_SECS:-$FM_NM_STALL_PARKED_SECS_DEFAULT}; is_gate=1 ;;
     running|fixing) threshold=${FM_NM_STALL_ACTIVE_SECS:-$FM_NM_STALL_ACTIVE_SECS_DEFAULT} ;;
     *) return 0 ;;
   esac
@@ -143,16 +143,26 @@ EOF
     NM_STALL_SEEN=$now
     return 0
   fi
-  if [ "$identity" != "$old_snapshot" ] || [ "$sig" != "$old_sig" ]; then
+  if [ "$identity" != "$old_snapshot" ]; then
     printf '%s\n%s\n\n%s\n' "$identity" "$sig" "$now" > "$marker"
-    return 0
+    [ "$is_gate" = 1 ] || return 0
+    old_seen=$now
+  elif [ "$sig" != "$old_sig" ]; then
+    if [ "$is_gate" = 1 ]; then
+      printf '%s\n%s\n\n%s\n' "$identity" "$sig" "$old_seen" > "$marker"
+    else
+      printf '%s\n%s\n\n%s\n' "$identity" "$sig" "$now" > "$marker"
+      return 0
+    fi
   fi
   [ "$old_alerted" = stalled ] && return 0
   if [ "$duration" -gt 0 ]; then run_started=$((now - duration)); else run_started=$old_seen; fi
-  status_mtime=$(_fm_classify_stat_mtime "$state/$task.status")
-  case "$status_mtime" in ''|*[!0-9]*) status_mtime=0 ;; esac
   anchor=$run_started
-  [ "$status_mtime" -gt "$anchor" ] && anchor=$status_mtime
+  if [ "$is_gate" != 1 ]; then
+    status_mtime=$(_fm_classify_stat_mtime "$state/$task.status")
+    case "$status_mtime" in ''|*[!0-9]*) status_mtime=0 ;; esac
+    [ "$status_mtime" -gt "$anchor" ] && anchor=$status_mtime
+  fi
   age=$((now - anchor))
   [ "$age" -ge "$threshold" ] || return 0
   NM_STALL_DETAIL="no-mistakes stall: run $run_id step $step task $task ($status unchanged for ${age}s)"

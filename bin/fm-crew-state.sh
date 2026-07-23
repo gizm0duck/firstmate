@@ -318,19 +318,27 @@ nm_active_step_row() {
 }
 
 nm_awaiting_seconds() {
-  local awaiting value number unit
+  local awaiting value number unit rest seconds=0
   awaiting=$(printf '%s\n' "$RUN_OUT" | sed -n 's/^[[:space:]]*awaiting_agent:[[:space:]]*//p' | head -1)
   value=${awaiting##* }
-  number=${value%[smhd]}
-  unit=${value#"$number"}
-  case "$number" in ''|*[!0-9]*) printf '0'; return ;; esac
-  case "$unit" in
-    s) printf '%s' "$number" ;;
-    m) printf '%s' "$((number * 60))" ;;
-    h) printf '%s' "$((number * 3600))" ;;
-    d) printf '%s' "$((number * 86400))" ;;
-    *) printf '0' ;;
-  esac
+  while [ -n "$value" ]; do
+    if [[ "$value" =~ ^([0-9]+)([smhd])(.*)$ ]]; then
+      number=${BASH_REMATCH[1]}
+      unit=${BASH_REMATCH[2]}
+      rest=${BASH_REMATCH[3]}
+    else
+      printf '0'
+      return
+    fi
+    case "$unit" in
+      s) seconds=$((seconds + 10#$number)) ;;
+      m) seconds=$((seconds + 10#$number * 60)) ;;
+      h) seconds=$((seconds + 10#$number * 3600)) ;;
+      d) seconds=$((seconds + 10#$number * 86400)) ;;
+    esac
+    value=$rest
+  done
+  printf '%s' "$seconds"
 }
 
 emit_stall_snapshot() {  # <run-state> <run-status>

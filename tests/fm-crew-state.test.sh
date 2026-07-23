@@ -1246,6 +1246,9 @@ test_stall_snapshot_preserves_attributed_step_and_gate_status() {
   FM_FAKE_AXI_STATUS="$(run_running fm/feat-stall-snapshot)"
   out=$(run_stall_snapshot "$d" stall)
   assert_contains "$out" $'01RUN\treview\trunning\t0' "active snapshot has run id, step, status, and duration"
+  FM_FAKE_AXI_STATUS="$(run_parked fm/feat-stall-snapshot)"
+  out=$(run_stall_snapshot "$d" stall)
+  assert_contains "$out" $'01RUN\treview\tawaiting_approval\t130' "parked snapshot converts compound awaiting duration to seconds"
   FM_FAKE_AXI_STATUS="$(run_parked_in_gate_block fm/feat-stall-snapshot)"
   out=$(run_stall_snapshot "$d" stall)
   assert_contains "$out" $'01RUN\treview\tfix_review\t0' "parked snapshot preserves the gate step and status"
