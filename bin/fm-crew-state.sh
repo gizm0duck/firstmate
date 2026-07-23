@@ -49,6 +49,13 @@
 #
 # Read-only and side-effect free. Always exits 0 on a successful read regardless
 # of state; exit 2 only on a usage error (no id).
+#
+# `--stall-snapshot <id>` is the watcher-facing companion read.
+# It emits one TAB-separated active run record,
+# `<run-id>\t<step>\t<status>\t<step-duration-seconds>`, only when a matching
+# run is working or parked.
+# The watcher owns elapsed-time thresholds and durable dedupe state, while this
+# helper remains the single owner of attributed run-step parsing.
 set -u
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -63,7 +70,14 @@ STATE="${FM_STATE_OVERRIDE:-$FM_HOME/state}"
 # shellcheck source=bin/fm-classify-lib.sh
 . "$SCRIPT_DIR/fm-classify-lib.sh"
 
-ID=${1:-}
+MODE=${1:-}
+if [ "$MODE" = --stall-snapshot ]; then
+  ID=${2:-}
+  STALL_SNAPSHOT=1
+else
+  ID=$MODE
+  STALL_SNAPSHOT=0
+fi
 [ -n "$ID" ] || { echo "usage: fm-crew-state.sh <id>" >&2; exit 2; }
 
 META="$STATE/$ID.meta"
@@ -283,6 +297,70 @@ nm_gate_findings_count() {
   rest=${rest%%|*}
   case "$rest" in ''|*[!0-9]*) return 0 ;; esac
   printf '%s' "$rest"
+}
+
+# Return the first active step table row as `<step>|<status>|<duration-seconds>`.
+# The TOON table is deliberately parsed here with the other run-step readers so
+# watcher-side stall detection never has a second, drifting no-mistakes parser.
+nm_active_step_row() {
+  local row step rest status duration
+  row=$(printf '%s\n' "$RUN_OUT" | grep -E '^[[:space:]]*[^,]+,[[:space:]]*"?(running|fixing)"?[[:space:]]*,' | head -1)
+  [ -n "$row" ] || return 0
+  row=$(trim "$row")
+  step=$(trim "${row%%,*}")
+  rest=${row#*,}
+  status=$(strip_quotes "$(trim "${rest%%,*}")")
+  rest=${rest#*,}
+  rest=${rest#*,}
+  duration=$(trim "${rest%%,*}")
+  case "$duration" in ''|*[!0-9]*) duration=0 ;; esac
+  printf '%s|%s|%s' "$step" "$status" "$((duration / 1000))"
+}
+
+nm_awaiting_seconds() {
+  local awaiting value number unit
+  awaiting=$(printf '%s\n' "$RUN_OUT" | sed -n 's/^[[:space:]]*awaiting_agent:[[:space:]]*//p' | head -1)
+  value=${awaiting##* }
+  number=${value%[smhd]}
+  unit=${value#"$number"}
+  case "$number" in ''|*[!0-9]*) printf '0'; return ;; esac
+  case "$unit" in
+    s) printf '%s' "$number" ;;
+    m) printf '%s' "$((number * 60))" ;;
+    h) printf '%s' "$((number * 3600))" ;;
+    d) printf '%s' "$((number * 86400))" ;;
+    *) printf '0' ;;
+  esac
+}
+
+emit_stall_snapshot() {  # <run-state> <run-status>
+  local run_state=$1 run_status=$2 run_id row step status duration gate gate_status
+  [ "$STALL_SNAPSHOT" = 1 ] || return 1
+  case "$run_state" in working|parked) ;; *) exit 0 ;; esac
+  run_id=$(strip_quotes "$(nm_field id)")
+  [ -n "$run_id" ] || exit 0
+  if [ "$run_state" = parked ]; then
+    gate=$(nm_gate_name)
+    gate_status=$(nm_gate_status)
+    [ -n "$gate" ] || gate=$run_status
+    [ -n "$gate" ] || gate=gate
+    case "$gate_status" in awaiting_approval|fix_review) ;; *) gate_status=${run_status:-awaiting_approval} ;; esac
+    printf '%s\t%s\t%s\t%s\n' "$run_id" "$gate" "$gate_status" "$(nm_awaiting_seconds)"
+    exit 0
+  fi
+  row=$(nm_active_step_row)
+  if [ -n "$row" ]; then
+    step=${row%%|*}
+    row=${row#*|}
+    status=${row%%|*}
+    duration=${row##*|}
+  else
+    step=${run_status:-pipeline}
+    status=${run_status:-running}
+    duration=0
+  fi
+  printf '%s\t%s\t%s\t%s\n' "$run_id" "$step" "$status" "$duration"
+  exit 0
 }
 log_reports_ci_ready() {
   [ "$LOG_VERB" = "done" ] || return 1
@@ -592,6 +670,7 @@ if [ "$HAVE_RUN" = 1 ]; then
       ;;
   esac
 
+  emit_stall_snapshot "$RUN_STATE" "$RUN_STATUS"
   emit "$RUN_STATE" run-step "$RUN_DETAIL"
 fi
 

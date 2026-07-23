@@ -143,6 +143,10 @@ run_crew_state() {  # <case-dir> <id>
   PATH="$1/fakebin:$PATH" FM_STATE_OVERRIDE="$1/state" "$CREW_STATE" "$2"
 }
 
+run_stall_snapshot() {  # <case-dir> <id>
+  PATH="$1/fakebin:$PATH" FM_STATE_OVERRIDE="$1/state" "$CREW_STATE" --stall-snapshot "$2"
+}
+
 new_case() {  # <name> -> echoes case dir with an empty state/
   local d="$TMP_ROOT/$1"
   mkdir -p "$d/state"
@@ -1232,6 +1236,22 @@ test_missing_run_head_falls_back_to_current_state() {
   pass "missing run head falls back instead of matching by branch"
 }
 
+test_stall_snapshot_preserves_attributed_step_and_gate_status() {
+  reset_fakes
+  local d out
+  d=$(new_case stall-snapshot)
+  make_repo_on_branch "$d/wt" fm/feat-stall-snapshot
+  make_fakebin "$d" >/dev/null
+  fm_write_meta "$d/state/stall.meta" "window=fm:fm-stall" "worktree=$d/wt" "kind=ship"
+  FM_FAKE_AXI_STATUS="$(run_running fm/feat-stall-snapshot)"
+  out=$(run_stall_snapshot "$d" stall)
+  assert_contains "$out" $'01RUN\treview\trunning\t0' "active snapshot has run id, step, status, and duration"
+  FM_FAKE_AXI_STATUS="$(run_parked_in_gate_block fm/feat-stall-snapshot)"
+  out=$(run_stall_snapshot "$d" stall)
+  assert_contains "$out" $'01RUN\treview\tfix_review\t0' "parked snapshot preserves the gate step and status"
+  pass "stall snapshot keeps run-step parsing in fm-crew-state for active and parked runs"
+}
+
 test_active_run_is_authoritative
 test_stale_needs_decision_superseded
 test_stale_blocked_superseded
@@ -1279,5 +1299,6 @@ test_historical_same_branch_rewritten_head_not_current
 test_active_run_descendant_fix_head_remains_current
 test_local_advanced_past_run_head_invalidates
 test_missing_run_head_falls_back_to_current_state
+test_stall_snapshot_preserves_attributed_step_and_gate_status
 
 echo "all fm-crew-state tests passed"

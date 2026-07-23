@@ -32,6 +32,8 @@
 #                          closer look instead of another routine supervision
 #                          resume. Unless afk is active.
 #   check: <script>: <out> authenticated check output, always actionable
+#   check: no-mistakes stall: <run/step/task> watcher-side pipeline stall,
+#                          parked-gate, or silent-advance detection
 #   check: rejected unauthenticated state checks: <paths>
 #                          unsafe state checks were refused without execution
 #   heartbeat              fleet-scan backstop found an unsurfaced captain-relevant
@@ -773,6 +775,22 @@ while :; do
   # never run until the fleet went quiet. Checks are due only every
   # CHECK_INTERVAL, so most cycles skip this block and fall straight through.
   if [ "$(age_of "$STATE/.last-check")" -ge "$CHECK_INTERVAL" ]; then
+    # Watcher-owned no-mistakes pipeline supervision.
+    # The shared classifier delegates attributed run-step parsing to
+    # fm-crew-state.sh, persists detector state in this home, and returns a
+    # single actionable line only for a new stalled, parked, or silent-advance
+    # condition.
+    for meta in "$STATE"/*.meta; do
+      [ -e "$meta" ] || continue
+      id=$(basename "$meta" .meta)
+      out=$(nm_stall_check_task "$id" "$STATE")
+      if [ -n "$out" ]; then
+        reason="check: $out"
+        fm_wake_append check "no-mistakes-stall:$id" "$reason" || exit 1
+        touch "$STATE/.last-check"
+        wake "$reason"
+      fi
+    done
     rejected_checks=
     for c in "$STATE"/*.check.sh; do
       [ -e "$c" ] || continue

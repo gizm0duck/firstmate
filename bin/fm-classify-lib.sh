@@ -31,6 +31,13 @@ _FM_CLASSIFY_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd 2>/dev/null)"
 # or no-mistakes install; absent, it points at the real sibling script.
 FM_CREW_STATE_BIN="${FM_CREW_STATE_BIN:-$_FM_CLASSIFY_LIB_DIR/fm-crew-state.sh}"
 
+# Watcher-side no-mistakes stall thresholds.
+# The watcher invokes nm_stall_check_task only on its existing slow-check cadence.
+# A matching active step has 15 minutes to advance or receive a crew status write,
+# while an awaiting-agent gate has eight minutes before it is surfaced.
+FM_NM_STALL_ACTIVE_SECS_DEFAULT=900
+FM_NM_STALL_PARKED_SECS_DEFAULT=480
+
 # Captain-relevant status verbs. A status line carrying any of these is work
 # firstmate must see. Lines without these verbs are no-verb signals: the watcher
 # absorbs them only with positive provably-working evidence, while the daemon uses
@@ -78,6 +85,66 @@ last_status_line() {
   local f=$1
   [ -e "$f" ] || return 0
   grep -v '^[[:space:]]*$' "$f" 2>/dev/null | tail -1
+}
+
+_fm_classify_stat_mtime() {  # <file>
+  if [ "$(uname)" = Darwin ]; then stat -f %m "$1" 2>/dev/null; else stat -c %Y "$1" 2>/dev/null; fi
+}
+
+_fm_nm_stall_status_signature() {  # <status-file>
+  local bytes mtime
+  [ -f "$1" ] || { printf 'missing'; return; }
+  bytes=$(wc -c < "$1" 2>/dev/null | tr -d '[:space:]')
+  mtime=$(_fm_classify_stat_mtime "$1")
+  printf '%s:%s' "${bytes:-0}" "${mtime:-0}"
+}
+
+# Detect a matching no-mistakes run that is stalled, parked too long, or advanced
+# without a corresponding crew status write.
+# Prints exactly one actionable wake detail or nothing.
+# The marker lives in the supplied home's state directory, making the home that
+# owns state/<task>.meta the sole recipient even when code roots are shared.
+nm_stall_check_task() {  # <task-id> <state-dir>
+  local task=$1 state=$2 snapshot run_id step status duration threshold marker old_snapshot old_sig old_alerted sig now run_started status_mtime anchor age
+  [ -n "$task" ] || return 0
+  snapshot=$(FM_STATE_OVERRIDE="$state" "$FM_CREW_STATE_BIN" --stall-snapshot "$task" 2>/dev/null || true)
+  [ -n "$snapshot" ] || return 0
+  IFS=$(printf '\t') read -r run_id step status duration <<EOF
+$snapshot
+EOF
+  [ -n "$run_id" ] && [ -n "$step" ] && [ -n "$status" ] || return 0
+  case "$duration" in ''|*[!0-9]*) duration=0 ;; esac
+  case "$status" in
+    awaiting_approval|fix_review) threshold=${FM_NM_STALL_PARKED_SECS:-$FM_NM_STALL_PARKED_SECS_DEFAULT} ;;
+    running|fixing) threshold=${FM_NM_STALL_ACTIVE_SECS:-$FM_NM_STALL_ACTIVE_SECS_DEFAULT} ;;
+    *) return 0 ;;
+  esac
+  case "$threshold" in ''|*[!0-9]*) threshold=$FM_NM_STALL_ACTIVE_SECS_DEFAULT ;; esac
+  marker="$state/.nm-stall-$task"
+  old_snapshot=$(sed -n '1p' "$marker" 2>/dev/null || true)
+  old_sig=$(sed -n '2p' "$marker" 2>/dev/null || true)
+  old_alerted=$(sed -n '3p' "$marker" 2>/dev/null || true)
+  sig=$(_fm_nm_stall_status_signature "$state/$task.status")
+  now=$(date +%s)
+  if [ -n "$old_snapshot" ] && [ "$snapshot" != "$old_snapshot" ] && [ "$sig" = "$old_sig" ]; then
+    printf '%s\n%s\nadvanced\n' "$snapshot" "$sig" > "$marker"
+    printf 'no-mistakes silent advance: run %s step %s task %s (run changed without a crew status write)' "$run_id" "$step" "$task"
+    return 0
+  fi
+  if [ "$snapshot" != "$old_snapshot" ] || [ "$sig" != "$old_sig" ]; then
+    printf '%s\n%s\n\n' "$snapshot" "$sig" > "$marker"
+    return 0
+  fi
+  [ "$old_alerted" = stalled ] && return 0
+  run_started=$((now - duration))
+  status_mtime=$(_fm_classify_stat_mtime "$state/$task.status")
+  case "$status_mtime" in ''|*[!0-9]*) status_mtime=0 ;; esac
+  anchor=$run_started
+  [ "$status_mtime" -gt "$anchor" ] && anchor=$status_mtime
+  age=$((now - anchor))
+  [ "$age" -ge "$threshold" ] || return 0
+  printf '%s\n%s\nstalled\n' "$snapshot" "$sig" > "$marker"
+  printf 'no-mistakes stall: run %s step %s task %s (%s unchanged for %ss)' "$run_id" "$step" "$task" "$status" "$age"
 }
 
 # 0 if the given (last) status line's leading verb is a real terminal captain verb
