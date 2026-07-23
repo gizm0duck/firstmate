@@ -783,10 +783,13 @@ while :; do
     for meta in "$STATE"/*.meta; do
       [ -e "$meta" ] || continue
       id=$(basename "$meta" .meta)
-      out=$(nm_stall_check_task "$id" "$STATE")
+      nm_stall_check_task "$id" "$STATE"
+      out=${NM_STALL_DETAIL:-}
       if [ -n "$out" ]; then
         reason="check: $out"
         fm_wake_append check "no-mistakes-stall:$id" "$reason" || exit 1
+        nm_stall_commit_alert "$id" "$STATE" "$NM_STALL_SNAPSHOT" "$NM_STALL_SIG" \
+          "$NM_STALL_ALERT" "$NM_STALL_SEEN" || true
         touch "$STATE/.last-check"
         wake "$reason"
       fi

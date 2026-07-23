@@ -101,11 +101,17 @@ _fm_nm_stall_status_signature() {  # <status-file>
 
 # Detect a matching no-mistakes run that is stalled, parked too long, or advanced
 # without a corresponding crew status write.
-# Prints exactly one actionable wake detail or nothing.
+# Sets NM_STALL_DETAIL for one actionable wake or leaves it empty.
+# Call nm_stall_commit_alert only after the wake has been durably queued.
 # The marker lives in the supplied home's state directory, making the home that
 # owns state/<task>.meta the sole recipient even when code roots are shared.
 nm_stall_check_task() {  # <task-id> <state-dir>
-  local task=$1 state=$2 snapshot run_id step status duration threshold marker old_snapshot old_sig old_alerted sig now run_started status_mtime anchor age
+  local task=$1 state=$2 snapshot identity run_id step status duration threshold marker old_snapshot old_sig old_alerted old_seen sig now run_started status_mtime anchor age
+  export NM_STALL_DETAIL=
+  export NM_STALL_SNAPSHOT=
+  export NM_STALL_SIG=
+  export NM_STALL_ALERT=
+  export NM_STALL_SEEN=
   [ -n "$task" ] || return 0
   snapshot=$(FM_STATE_OVERRIDE="$state" "$FM_CREW_STATE_BIN" --stall-snapshot "$task" 2>/dev/null || true)
   [ -n "$snapshot" ] || return 0
@@ -113,6 +119,7 @@ nm_stall_check_task() {  # <task-id> <state-dir>
 $snapshot
 EOF
   [ -n "$run_id" ] && [ -n "$step" ] && [ -n "$status" ] || return 0
+  identity=$(printf '%s\t%s\t%s' "$run_id" "$step" "$status")
   case "$duration" in ''|*[!0-9]*) duration=0 ;; esac
   case "$status" in
     awaiting_approval|fix_review) threshold=${FM_NM_STALL_PARKED_SECS:-$FM_NM_STALL_PARKED_SECS_DEFAULT} ;;
@@ -124,27 +131,52 @@ EOF
   old_snapshot=$(sed -n '1p' "$marker" 2>/dev/null || true)
   old_sig=$(sed -n '2p' "$marker" 2>/dev/null || true)
   old_alerted=$(sed -n '3p' "$marker" 2>/dev/null || true)
+  old_seen=$(sed -n '4p' "$marker" 2>/dev/null || true)
   sig=$(_fm_nm_stall_status_signature "$state/$task.status")
   now=$(date +%s)
-  if [ -n "$old_snapshot" ] && [ "$snapshot" != "$old_snapshot" ] && [ "$sig" = "$old_sig" ]; then
-    printf '%s\n%s\nadvanced\n' "$snapshot" "$sig" > "$marker"
-    printf 'no-mistakes silent advance: run %s step %s task %s (run changed without a crew status write)' "$run_id" "$step" "$task"
+  case "$old_seen" in ''|*[!0-9]*) old_seen=$now ;; esac
+  if [ -n "$old_snapshot" ] && [ "$identity" != "$old_snapshot" ] && [ "$sig" = "$old_sig" ]; then
+    NM_STALL_DETAIL="no-mistakes silent advance: run $run_id step $step task $task (run changed without a crew status write)"
+    NM_STALL_SNAPSHOT=$identity
+    NM_STALL_SIG=$sig
+    NM_STALL_ALERT=advanced
+    NM_STALL_SEEN=$now
     return 0
   fi
-  if [ "$snapshot" != "$old_snapshot" ] || [ "$sig" != "$old_sig" ]; then
-    printf '%s\n%s\n\n' "$snapshot" "$sig" > "$marker"
+  if [ "$identity" != "$old_snapshot" ] || [ "$sig" != "$old_sig" ]; then
+    printf '%s\n%s\n\n%s\n' "$identity" "$sig" "$now" > "$marker"
     return 0
   fi
   [ "$old_alerted" = stalled ] && return 0
-  run_started=$((now - duration))
+  if [ "$duration" -gt 0 ]; then run_started=$((now - duration)); else run_started=$old_seen; fi
   status_mtime=$(_fm_classify_stat_mtime "$state/$task.status")
   case "$status_mtime" in ''|*[!0-9]*) status_mtime=0 ;; esac
   anchor=$run_started
   [ "$status_mtime" -gt "$anchor" ] && anchor=$status_mtime
   age=$((now - anchor))
   [ "$age" -ge "$threshold" ] || return 0
-  printf '%s\n%s\nstalled\n' "$snapshot" "$sig" > "$marker"
-  printf 'no-mistakes stall: run %s step %s task %s (%s unchanged for %ss)' "$run_id" "$step" "$task" "$status" "$age"
+  NM_STALL_DETAIL="no-mistakes stall: run $run_id step $step task $task ($status unchanged for ${age}s)"
+  NM_STALL_SNAPSHOT=$identity
+  NM_STALL_SIG=$sig
+  NM_STALL_ALERT=stalled
+  NM_STALL_SEEN=$old_seen
+}
+
+nm_stall_commit_alert() {  # <task-id> <state-dir> <snapshot> <signature> <alert> <first-seen>
+  local task=$1 state=$2 expected_snapshot=$3 expected_sig=$4 alert=$5 seen=$6 snapshot run_id step status duration identity sig marker
+  [ -n "$task" ] && [ -n "$expected_snapshot" ] && [ -n "$expected_sig" ] || return 1
+  snapshot=$(FM_STATE_OVERRIDE="$state" "$FM_CREW_STATE_BIN" --stall-snapshot "$task" 2>/dev/null || true)
+  [ -n "$snapshot" ] || return 1
+  IFS=$(printf '\t') read -r run_id step status duration <<EOF
+$snapshot
+EOF
+  [ -n "$run_id" ] && [ -n "$step" ] && [ -n "$status" ] || return 1
+  identity=$(printf '%s\t%s\t%s' "$run_id" "$step" "$status")
+  sig=$(_fm_nm_stall_status_signature "$state/$task.status")
+  [ "$identity" = "$expected_snapshot" ] && [ "$sig" = "$expected_sig" ] || return 1
+  case "$seen" in ''|*[!0-9]*) seen=$(date +%s) ;; esac
+  marker="$state/.nm-stall-$task"
+  printf '%s\n%s\n%s\n%s\n' "$identity" "$sig" "$alert" "$seen" > "$marker"
 }
 
 # 0 if the given (last) status line's leading verb is a real terminal captain verb
