@@ -40,14 +40,11 @@ test_active_step_stall() {
   export FM_FAKE_SNAPSHOT
   FM_NM_STALL_ACTIVE_SECS=900 nm_stall_check_task task "$dir/state"
   out=$NM_STALL_DETAIL
-  [ -z "$out" ] || fail "the first active observation must establish a baseline"
-  FM_NM_STALL_ACTIVE_SECS=900 nm_stall_check_task task "$dir/state"
-  out=$NM_STALL_DETAIL
   case "$out" in
     *"run run-active step review task task"*) : ;;
-    *) fail "stuck running step did not trip with run, step, and task: $out" ;;
+    *) fail "stuck running step did not trip on its first observation: $out" ;;
   esac
-  pass "no-mistakes stall detector: stuck running step wakes once with run, step, and task"
+  pass "no-mistakes stall detector: stuck running step wakes immediately with run, step, and task"
 }
 
 test_parked_gate_stall() {

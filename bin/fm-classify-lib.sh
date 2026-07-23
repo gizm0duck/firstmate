@@ -145,7 +145,6 @@ EOF
   fi
   if [ "$identity" != "$old_snapshot" ]; then
     printf '%s\n%s\n\n%s\n' "$identity" "$sig" "$now" > "$marker"
-    [ "$is_gate" = 1 ] || return 0
     old_seen=$now
   elif [ "$sig" != "$old_sig" ]; then
     if [ "$is_gate" = 1 ]; then
